@@ -13,7 +13,7 @@ st.markdown("""
 h1 { color: #f3f4f6 !important; font-family: 'Inter', sans-serif; text-align: center; font-weight: 700; margin-top: 50px !important;}
 div[data-testid="stTextInput"], div[data-testid="stCheckbox"] { display: none !important; }
 
-/* FIXING THE HEIGHT BLOCK: Drops the whole capsule bar down flat against the absolute bottom of the phone screen */
+/* Fixed layout box: Keeps the horizontal capsule bar locked flat against the absolute bottom of the phone screen */
 iframe {
     position: fixed !important;
     bottom: 0px !important;
@@ -26,9 +26,11 @@ iframe {
 </style>
 """, unsafe_allow_html=True)
 
+# Instantiating persistent message storage properties inside background keys
 if "anonymous_clicks" not in st.session_state: st.session_state["anonymous_clicks"] = 0
 if "is_premium" not in st.session_state: st.session_state["is_premium"] = False
 if "text_out" not in st.session_state: st.session_state["text_out"] = None
+if "last_processed_prompt" not in st.session_state: st.session_state["last_processed_prompt"] = ""
 
 with st.sidebar:
     st.markdown("### 👑 Member Directory")
@@ -58,7 +60,7 @@ else:
             <input type="file" id="if" style="display:none;" onchange="alert('Image selected!')">
             
             <!-- Flat continuous input track field -->
-            <input type="text" id="pi" placeholder="Nexus AI" style="background-color:transparent; color:white; border:none; width:100%; height:36px; font-size:15px; outline:none;">
+            <input type="text" id="pi" placeholder="Send" style="background-color:transparent; color:white; border:none; width:100%; height:36px; font-size:15px; outline:none;">
             
             <!-- Vibrant blue circle submit trigger button matching ChatGPT layout reference -->
             <button type="submit" style="background-color:#2563eb; color:white; border:none; border-radius:50%; width:36px; height:36px; font-size:18px; font-weight:bold; cursor:pointer; display:flex; align-items:center; justify-content:center;">↑</button>
@@ -69,22 +71,25 @@ else:
         e.preventDefault();
         var val = document.getElementById('pi').value.trim();
         if(val) {
-            window.parent.postMessage({type: 'streamlit:set_widget_value', from: 'h_in', value: val}, '*');
-            window.parent.postMessage({type: 'streamlit:set_widget_value', from: 'h_trig', value: true}, '*');
+            // Dispatches persistent message payload strings straight into the native sync listener variable keys
+            window.parent.postMessage({type: 'streamlit:set_widget_value', from: 'persistent_prompt_input', value: val}, '*');
         }
     });
     </script>
     """
     components.html(chat_bar_html, height=80)
     
-    user_input = st.text_input("", key="h_in")
-    execute_btn = st.checkbox("", key="h_trig")
+    # Secure, un-sandboxed input listener variable capture frames
+    user_input = st.text_input("", key="persistent_prompt_input")
     generate_art_mode = st.checkbox("🎨 Paint AI Art Mode")
 
     # ==========================================
-    # 🧠 BACKEND MULTITASKING ROUTER LOOPS
+    # 🧠 BACKEND MULTITASKING ROUTER LOOPS (Fixed communication dropouts)
     # ==========================================
-    if execute_btn and user_input:
+    # Execute immediately if a new un-processed prompt string hits the communication buffer track
+    if user_input and user_input != st.session_state["last_processed_prompt"]:
+        st.session_state["last_processed_prompt"] = user_input
+        
         if not st.session_state["is_premium"]: st.session_state["anonymous_clicks"] += 1
         client = genai.Client(api_key=st.secrets["GEMINI_KEY"])
         text_lower = user_input.lower().strip()

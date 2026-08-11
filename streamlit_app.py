@@ -1,4 +1,5 @@
 import streamlit as st, urllib.request, json
+import streamlit.components.v1 as components
 from bs4 import BeautifulSoup
 from google import genai
 from google.genai import types

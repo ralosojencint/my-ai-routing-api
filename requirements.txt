@@ -1,5 +1,6 @@
-streamlit
-requests
-fpdf2
-Pillow
-google-genai
+streamlit>=1.47.0
+openai>=1.68.0
+tavily-python>=0.7.0
+pypdf>=5.0.0
+pandas>=2.2.0
+numpy>=1.26.0

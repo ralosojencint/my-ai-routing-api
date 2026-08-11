@@ -3,43 +3,51 @@ import urllib.request
 import json
 from bs4 import BeautifulSoup
 from google import genai
-# Import the secure login manager library
 import streamlit_authenticator as stauth
 
 st.set_page_config(page_title="Mobile AI Multitask Agent", page_icon="📱")
 
-# 1. DEFINE YOUR PAYING CUSTOMERS (Username, Name, and Hashed Password)
-# For testing, the username is "admin" and the password is "password123"
-credentials = {
-    "usernames": {
-        "admin": {
-            "name": "Premium User",
-            "password": "b'\\xa4\\xb1\\xaa\\x1e\\xbe\\xc2\\xec\\x0b\\xab\\xdf\\xa4v\\xf0\\xe8\\xee`c\\xbe\\x80A\\x02\\xbe\\xa9\\x9c\\x02\\x16&\\xbd_\\x08\\xc5\\x03'" # Pre-hashed password
+# 1. NEW DATA STRUCTURE CONFIGURATION (Compliant with updated library rules)
+config = {
+    "credentials": {
+        "usernames": {
+            "admin": {
+                "name": "Premium User",
+                "password": "password123"  # Change this to any password you want to give paying clients
+            }
         }
+    },
+    "cookie": {
+        "name": "ai_agent_cookie",
+        "key": "abcdefabcdefabcdef",
+        "expiry_days": 30
     }
 }
 
-# 2. Initialize the Login Interface Window
+# 2. Initialize the Updated Login Interface Framework
 authenticator = stauth.Authenticate(
-    credentials,
-    "ai_agent_cookie",
-    "abcdef",
-    cookie_expiry_days=30
+    config["credentials"],
+    config["cookie"]["name"],
+    config["cookie"]["key"],
+    config["cookie"]["expiry_days"]
 )
 
 # Render the Login Input Form on your screen
-name, authentication_status, username = authenticator.login("Login to Premium AI Agent", "main")
+try:
+    authenticator.login()
+except Exception:
+    pass
 
-# 3. IF THE USER IS NOT LOGGED IN, BLOCK THE APPLICATION
-if authentication_status == False:
+# 3. VERIFY LOGIN AT WORKSPACE LAYER
+if st.session_state.get("authentication_status") == False:
     st.error("Username/password is incorrect")
-elif authentication_status == None:
+elif st.session_state.get("authentication_status") == None:
     st.warning("Please enter your premium username and password to unlock the AI tool.")
 
-# 4. IF LOGGED IN, SHOW YOUR APP WORKSPACE HOOD
-elif authentication_status:
-    # Show a personalized welcome bar and a logout button
-    st.write(f"Welcome back, **{name}**!")
+# 4. IF VALIDATED, REVEAL YOUR PREMIUM APPLICATION
+elif st.session_state.get("authentication_status"):
+    # Render customized headers and clear user controls
+    st.write(f"Welcome back, **{st.session_state['name']}**!")
     authenticator.logout("Log Out", "sidebar")
     
     st.title("📱 Mobile AI Multitask Agent")

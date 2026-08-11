@@ -118,19 +118,19 @@ else:
 
     st.markdown("<br><br>", unsafe_allow_html=True)
 
-    # UNBREAKABLE SINGLE ROW INTERFACE HOOD
-    bar_cols = st.columns()
+    # FIXED LINE HERE: We passed exact horizontal proportions to satisfy Streamlit's engine
+    bar_cols = st.columns([1, 4, 1])
     
-    with bar_cols:
+    with bar_cols[0]:
         with st.popover("+"):
             uploaded_image = st.file_uploader("📎 Upload Image to Analyze", type=["png", "jpg", "jpeg"])
             audio_file = st.audio_input("🎤 Record Voice Input")
             generate_art_mode = st.checkbox("🎨 Paint AI Art Mode")
         
-    with bar_cols:
+    with bar_cols[1]:
         user_input = st.text_input("", placeholder="Nexus AI", label_visibility="collapsed")
         
-    with bar_cols:
+    with bar_cols[2]:
         st.markdown('<div class="send-btn-box">', unsafe_allow_html=True)
         execute_btn = st.button("↑")
         st.markdown('</div>', unsafe_allow_html=True)
@@ -139,7 +139,11 @@ else:
     # 🧠 BACKEND MULTITASKING ROUTER LOOPS
     # ==========================================
     if execute_btn:
-        if not user_input and not uploaded_image and not audio_file:
+        uploaded_image_valid = 'uploaded_image' in locals() and uploaded_image is not None
+        audio_file_valid = 'audio_file' in locals() and audio_file is not None
+        generate_art_mode_valid = 'generate_art_mode' in locals() and generate_art_mode
+        
+        if not user_input and not uploaded_image_valid and not audio_file_valid:
             st.warning("⚠️ Please provide an instruction text string or choose a file asset link to execute.")
         else:
             if not st.session_state["is_premium"]: st.session_state["anonymous_clicks"] += 1
@@ -152,7 +156,7 @@ else:
             TEXT_MODEL = 'gemini-2.0-flash'
             ART_MODEL = 'imagen-3.0-generate-002'
 
-            if generate_art_mode and user_input:
+            if generate_art_mode_valid and user_input:
                 try:
                     result = client.models.generate_images(model=ART_MODEL, prompt=user_input, config=dict(number_of_images=1, output_mime_type="image/jpeg"))
                     for g_img in result.generated_images: st.session_state["image_out"] = g_img.image.image_bytes
@@ -175,11 +179,11 @@ else:
                 else: st.session_state["text_out"] = "❌ Link Error: Missing valid http prefix link target."
             else:
                 try:
-                    if uploaded_image:
+                    if uploaded_image_valid:
                         image_bytes = uploaded_image.read()
                         prompt_to_use = user_input if user_input else "Describe this image asset in deep detail."
                         response = client.models.generate_content(model=TEXT_MODEL, contents=[types.Part.from_bytes(data=image_bytes, mime_type=uploaded_image.type), prompt_to_use])
-                    elif audio_file:
+                    elif audio_file_valid:
                         audio_bytes = audio_file.read()
                         response = client.models.generate_content(model=TEXT_MODEL, contents=[types.Part.from_bytes(data=audio_bytes, mime_type="audio/wav"), "Transcribe and answer this audio message."])
                     else:

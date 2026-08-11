@@ -36,15 +36,55 @@ TAVILY_API_KEY = get_secret("TAVILY_API_KEY")
 # SESSION STATE
 # ============================================================
 
-if "messages" not in st.session_state:
-    st.session_state.messages = []
+if "chats" not in st.session_state:
+    st.session_state.chats = {}
+
+if "current_chat" not in st.session_state:
+    st.session_state.current_chat = None
 
 if "research_mode" not in st.session_state:
     st.session_state.research_mode = "Quick"
 
 
 # ============================================================
-# CUSTOM UI
+# CREATE NEW CHAT
+# ============================================================
+
+def create_new_chat():
+
+    chat_id = str(
+        len(st.session_state.chats) + 1
+    ) + "_" + str(
+        abs(hash(str(st.session_state.chats)))
+    )
+
+    st.session_state.chats[chat_id] = {
+        "title": "New conversation",
+        "messages": []
+    }
+
+    st.session_state.current_chat = chat_id
+
+
+# Create first conversation
+if st.session_state.current_chat is None:
+
+    create_new_chat()
+
+
+# ============================================================
+# CURRENT CHAT
+# ============================================================
+
+def current_messages():
+
+    return st.session_state.chats[
+        st.session_state.current_chat
+    ]["messages"]
+
+
+# ============================================================
+# UI
 # ============================================================
 
 st.markdown("""
@@ -56,9 +96,9 @@ st.markdown("""
 }
 
 .block-container {
-    max-width: 780px;
-    padding-top: 50px;
-    padding-bottom: 180px;
+    max-width: 800px;
+    padding-top: 45px;
+    padding-bottom: 150px;
 }
 
 /* ============================================================
@@ -74,7 +114,7 @@ st.markdown("""
 }
 
 .nexus-line {
-    width: 26px;
+    width: 25px;
     height: 2px;
     background: #eeeeee;
     margin: 12px auto;
@@ -84,11 +124,11 @@ st.markdown("""
     text-align: center;
     color: #707078;
     font-size: 13px;
-    margin-bottom: 50px;
+    margin-bottom: 45px;
 }
 
 /* ============================================================
-   USER MESSAGE
+   USER
    ============================================================ */
 
 .user-message {
@@ -103,12 +143,11 @@ st.markdown("""
     border: 1px solid #29292e;
     border-radius: 18px 18px 5px 18px;
     padding: 12px 16px;
-    color: #eeeeef;
     line-height: 1.55;
 }
 
 /* ============================================================
-   AI MESSAGE
+   NEXUS
    ============================================================ */
 
 .ai-message {
@@ -124,8 +163,8 @@ st.markdown("""
 
 .ai-content {
     color: #eeeeef;
-    font-size: 15px;
     line-height: 1.7;
+    font-size: 15px;
 }
 
 /* ============================================================
@@ -148,7 +187,6 @@ st.markdown("""
     letter-spacing: 1.5px;
     text-transform: uppercase;
     margin-top: 25px;
-    margin-bottom: 5px;
 }
 
 .source {
@@ -176,56 +214,18 @@ st.markdown("""
 }
 
 /* ============================================================
-   INPUT AREA
+   CHAT INPUT
    ============================================================ */
 
-.composer-title {
-    color: #66666d;
-    font-size: 10px;
-    letter-spacing: 1px;
-    text-transform: uppercase;
-    margin-bottom: 5px;
+[data-testid="stChatInput"] {
+    background: #151518 !important;
 }
 
-/* Text input */
-
-div[data-testid="stTextInput"] input {
+[data-testid="stChatInput"] textarea {
     background: #151518 !important;
     color: #eeeeef !important;
     border: 1px solid #303035 !important;
-    border-radius: 16px !important;
-    height: 48px !important;
-    padding-left: 16px !important;
-}
-
-div[data-testid="stTextInput"] input:focus {
-    border-color: #55555c !important;
-    box-shadow: none !important;
-}
-
-/* Selectbox */
-
-div[data-testid="stSelectbox"] div[data-baseweb="select"] > div {
-    background: #151518 !important;
-    color: #eeeeef !important;
-    border: 1px solid #303035 !important;
-    border-radius: 16px !important;
-    min-height: 48px !important;
-}
-
-/* Send button */
-
-div.stButton > button {
-    background: #eeeeef !important;
-    color: #0b0b0d !important;
-    border: none !important;
-    border-radius: 14px !important;
-    font-weight: 600 !important;
-    min-height: 42px !important;
-}
-
-div.stButton > button:hover {
-    background: #ffffff !important;
+    border-radius: 18px !important;
 }
 
 /* ============================================================
@@ -237,6 +237,15 @@ div.stButton > button:hover {
     border-right: 1px solid #202024;
 }
 
+.history-label {
+    color: #66666d;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-top: 15px;
+    margin-bottom: 8px;
+}
+
 /* ============================================================
    MOBILE
    ============================================================ */
@@ -244,8 +253,8 @@ div.stButton > button:hover {
 @media (max-width: 600px) {
 
     .block-container {
-        padding-top: 35px;
-        padding-bottom: 190px;
+        padding-top: 30px;
+        padding-bottom: 130px;
     }
 
     .nexus-name {
@@ -256,6 +265,72 @@ div.stButton > button:hover {
 
 </style>
 """, unsafe_allow_html=True)
+
+
+# ============================================================
+# SIDEBAR / HISTORY
+# ============================================================
+
+with st.sidebar:
+
+    st.markdown("## NEXUS")
+
+    if st.button(
+        "＋  New chat",
+        use_container_width=True
+    ):
+
+        create_new_chat()
+
+        st.rerun()
+
+
+    st.divider()
+
+    st.markdown(
+        '<div class="history-label">History</div>',
+        unsafe_allow_html=True
+    )
+
+
+    # Show newest chats first
+    chat_items = list(
+        st.session_state.chats.items()
+    )
+
+    chat_items.reverse()
+
+
+    for chat_id, chat in chat_items:
+
+        title = chat["title"]
+
+        if not title:
+            title = "New conversation"
+
+        # Keep title short in sidebar
+        display_title = title[:38]
+
+        if len(title) > 38:
+            display_title += "..."
+
+
+        if st.button(
+            display_title,
+            key="history_" + chat_id,
+            use_container_width=True
+        ):
+
+            st.session_state.current_chat = chat_id
+
+            st.rerun()
+
+
+    st.divider()
+
+    st.caption(
+        "Your conversations are kept in this session."
+    )
 
 
 # ============================================================
@@ -281,42 +356,6 @@ st.markdown(
 
 
 # ============================================================
-# SIDEBAR
-# ============================================================
-
-with st.sidebar:
-
-    st.markdown("### NEXUS")
-
-    st.caption(
-        "Research-first intelligence"
-    )
-
-    st.divider()
-
-    st.markdown("**Modes**")
-
-    st.write(
-        "Quick — fast answers"
-    )
-
-    st.write(
-        "Deep — broader research"
-    )
-
-    st.divider()
-
-    if st.button(
-        "New conversation",
-        use_container_width=True
-    ):
-
-        st.session_state.messages = []
-
-        st.rerun()
-
-
-# ============================================================
 # WEB SEARCH
 # ============================================================
 
@@ -324,19 +363,19 @@ def search_web(query, deep=False):
 
     if not TAVILY_API_KEY:
 
-        return [], (
-            "TAVILY_API_KEY is missing."
-        )
+        return [], "TAVILY_API_KEY is missing."
+
 
     try:
 
-        max_results = 8 if deep else 5
+        results_count = 8 if deep else 5
 
-        search_depth = (
+        depth = (
             "advanced"
             if deep
             else "basic"
         )
+
 
         response = requests.post(
 
@@ -345,9 +384,9 @@ def search_web(query, deep=False):
             json={
                 "api_key": TAVILY_API_KEY,
                 "query": query,
-                "search_depth": search_depth,
+                "search_depth": depth,
                 "topic": "general",
-                "max_results": max_results,
+                "max_results": results_count,
                 "include_answer": False,
                 "include_raw_content": False
             },
@@ -355,16 +394,16 @@ def search_web(query, deep=False):
             timeout=35
         )
 
+
         if response.status_code != 200:
 
-            return [], (
-                "Search error: "
-                + response.text
-            )
+            return [], response.text
+
 
         data = response.json()
 
         results = []
+
 
         for item in data.get(
             "results",
@@ -386,10 +425,12 @@ def search_web(query, deep=False):
                 "content": item.get(
                     "content",
                     ""
-                )[:1100]
+                )[:1000]
             })
 
+
         return results, None
+
 
     except Exception as e:
 
@@ -397,7 +438,7 @@ def search_web(query, deep=False):
 
 
 # ============================================================
-# CREATE SEARCH QUERIES
+# SEARCH PLANNER
 # ============================================================
 
 def create_search_queries(question):
@@ -406,21 +447,18 @@ def create_search_queries(question):
 
         return [question]
 
+
     prompt = f"""
-Create 3 different web search queries
-for this question:
+Create 3 different search queries
+to research this question:
 
 {question}
 
-The queries should approach the question
-from different angles.
-
 Return ONLY the queries.
-
 One query per line.
 No numbering.
-No explanation.
 """
+
 
     try:
 
@@ -454,17 +492,20 @@ No explanation.
                     0.2,
 
                 "max_completion_tokens":
-                    200
+                    180
             },
 
             timeout=30
         )
 
+
         if response.status_code != 200:
 
             return [question]
 
+
         data = response.json()
+
 
         text = data[
             "choices"
@@ -474,7 +515,9 @@ No explanation.
             "content"
         ]
 
+
         queries = []
+
 
         for line in text.splitlines():
 
@@ -487,9 +530,12 @@ No explanation.
                 )
 
                 if line:
+
                     queries.append(line)
 
+
         return queries[:3] or [question]
+
 
     except Exception:
 
@@ -497,7 +543,7 @@ No explanation.
 
 
 # ============================================================
-# GENERATE ANSWER
+# AI ANSWER
 # ============================================================
 
 def generate_answer(
@@ -510,52 +556,50 @@ def generate_answer(
     if not GROQ_API_KEY:
 
         return (
-            "GROQ_API_KEY is missing. "
-            "Add it to Streamlit Secrets."
+            "GROQ_API_KEY is missing."
         )
 
 
-    # Keep payload deliberately small.
-    max_sources = 8 if deep else 5
+    # Keep request small
+    source_limit = 8 if deep else 5
 
-    evidence_parts = []
+
+    evidence = ""
 
 
     for index, source in enumerate(
-        sources[:max_sources],
+        sources[:source_limit],
         start=1
     ):
 
-        evidence_parts.append(
-            f"""
+        evidence += f"""
+
 SOURCE {index}
-Title: {source["title"]}
-URL: {source["url"]}
-Evidence: {source["content"][:900]}
+
+Title:
+{source["title"]}
+
+URL:
+{source["url"]}
+
+Evidence:
+{source["content"][:800]}
+
 """
-        )
 
 
-    evidence = "\n".join(
-        evidence_parts
-    )
-
-
-    recent_history = []
+    # Only send a small amount of chat history
+    recent = ""
 
 
     for message in history[-4:]:
 
-        recent_history.append(
-            message["role"]
+        recent += (
+            "\n"
+            + message["role"]
             + ": "
-            + message["content"][:500]
+            + message["content"][:450]
         )
-
-
-    conversation = "\n".join(
-        recent_history
-    )
 
 
     mode = (
@@ -568,7 +612,7 @@ Evidence: {source["content"][:900]}
     prompt = f"""
 You are NEXUS.
 
-Research mode:
+Mode:
 {mode}
 
 USER QUESTION:
@@ -578,35 +622,36 @@ WEB EVIDENCE:
 {evidence}
 
 RECENT CONVERSATION:
-{conversation}
+{recent}
 
-Your job is to answer accurately
-using the evidence.
+Answer accurately using the evidence.
 
-Rules:
+RULES:
 
-1. Do not invent facts.
-2. Cite important claims using [1], [2], etc.
-3. Prefer claims supported by multiple sources.
-4. Identify important disagreements.
-5. Consider source quality and recency.
-6. If evidence is insufficient, say so.
-7. Do not claim you searched something
-   that you did not search.
+- Never invent facts.
+- Cite important claims using [1], [2], etc.
+- Prefer multiple sources.
+- Identify meaningful disagreements.
+- Consider source quality.
+- Consider recency.
+- If evidence is insufficient, say so.
+- Do not claim to have searched something
+  that was not searched.
 
 PERSONALITY:
 
-NEXUS is intelligent, calm,
-direct and slightly funny.
+Smart.
+Calm.
+Direct.
+Slightly funny.
 
-Use occasional dry humor
-when it fits naturally.
+Use humor naturally.
 
-Do not force jokes.
+Never force jokes.
 
-Do not use cringe AI language.
+Never use cringe AI language.
 
-Accuracy comes before humor.
+Accuracy comes first.
 """
 
 
@@ -656,12 +701,14 @@ Accuracy comes before humor.
             timeout=90
         )
 
+
         if response.status_code == 413:
 
             return (
-                "NEXUS hit a payload-size limit. "
-                "The research evidence was too large."
+                "The research package was too large. "
+                "Try the question again."
             )
+
 
         if response.status_code != 200:
 
@@ -670,7 +717,9 @@ Accuracy comes before humor.
                 + response.text
             )
 
+
         data = response.json()
+
 
         return data[
             "choices"
@@ -679,6 +728,7 @@ Accuracy comes before humor.
         ][
             "content"
         ]
+
 
     except Exception as e:
 
@@ -697,12 +747,14 @@ def display_sources(sources):
     if not sources:
         return
 
+
     st.markdown(
         '<div class="sources-title">'
         'Sources'
         '</div>',
         unsafe_allow_html=True
     )
+
 
     for index, source in enumerate(
         sources,
@@ -717,6 +769,7 @@ def display_sources(sources):
             source["url"]
         )
 
+
         st.markdown(
             f"""
 <div class="source">
@@ -729,8 +782,7 @@ def display_sources(sources):
 
 <a href="{url}"
 target="_blank"
-style="color:#dddddf;
-text-decoration:none;">
+style="color:#dddddf;text-decoration:none;">
 
 {title}
 
@@ -749,23 +801,24 @@ text-decoration:none;">
 
 
 # ============================================================
-# DISPLAY CHAT HISTORY
+# DISPLAY CURRENT CHAT
 # ============================================================
 
-for message in st.session_state.messages:
+for message in current_messages():
 
     if message["role"] == "user":
 
-        safe_text = html.escape(
+        safe = html.escape(
             message["content"]
         )
+
 
         st.markdown(
             f"""
 <div class="user-message">
 
 <div class="user-bubble">
-{safe_text}
+{safe}
 </div>
 
 </div>
@@ -773,7 +826,8 @@ for message in st.session_state.messages:
             unsafe_allow_html=True
         )
 
-    else:
+
+    elif message["role"] == "assistant":
 
         st.markdown(
             '<div class="ai-message">'
@@ -784,14 +838,17 @@ for message in st.session_state.messages:
             unsafe_allow_html=True
         )
 
+
         st.markdown(
             message["content"]
         )
+
 
         st.markdown(
             '</div></div>',
             unsafe_allow_html=True
         )
+
 
         display_sources(
             message.get(
@@ -802,69 +859,111 @@ for message in st.session_state.messages:
 
 
 # ============================================================
-# COMPOSER
+# RESEARCH MODE INSIDE THE CHAT COMPOSER
 # ============================================================
 
-st.markdown(
-    '<div class="composer-title">'
-    'Ask NEXUS'
-    '</div>',
-    unsafe_allow_html=True
-)
-
-input_col, mode_col = st.columns(
-    [5, 2]
+mode_col1, mode_col2 = st.columns(
+    [1, 1]
 )
 
 
-with input_col:
+with mode_col1:
 
-    question = st.text_input(
-        "Question",
-        placeholder="Ask NEXUS anything...",
-        label_visibility="collapsed"
+    quick = st.button(
+        "Quick",
+        use_container_width=True
     )
 
 
-with mode_col:
+with mode_col2:
 
-    selected_mode = st.selectbox(
-        "Research mode",
-        [
-            "Quick",
-            "Deep Research"
-        ],
-        index=(
-            1
-            if st.session_state.research_mode
-            == "Deep Research"
-            else 0
-        ),
-        label_visibility="collapsed"
+    deep_button = st.button(
+        "Deep Research",
+        use_container_width=True
     )
 
 
-st.session_state.research_mode = selected_mode
+if quick:
+
+    st.session_state.research_mode = "Quick"
+
+    st.rerun()
 
 
-send = st.button(
-    "Send",
-    use_container_width=True
+if deep_button:
+
+    st.session_state.research_mode = "Deep Research"
+
+    st.rerun()
+
+
+# Show current mode immediately above chat box
+
+mode_text = (
+    "Deep Research"
+    if st.session_state.research_mode
+    == "Deep Research"
+    else "Quick"
+)
+
+
+st.caption(
+    "Mode: " + mode_text
 )
 
 
 # ============================================================
-# HANDLE QUESTION
+# CHAT INPUT
 # ============================================================
 
-if send and question.strip():
+question = st.chat_input(
+    "Ask NEXUS anything..."
+)
+
+
+# ============================================================
+# PROCESS QUESTION
+# ============================================================
+
+if question:
 
     question = question.strip()
 
 
-    # Save user message
+    if not question:
+        st.stop()
 
-    st.session_state.messages.append({
+
+    deep = (
+        st.session_state.research_mode
+        == "Deep Research"
+    )
+
+
+    # --------------------------------------------------------
+    # UPDATE TITLE
+    # --------------------------------------------------------
+
+    current_chat = st.session_state.chats[
+        st.session_state.current_chat
+    ]
+
+
+    if (
+        current_chat["title"]
+        == "New conversation"
+    ):
+
+        current_chat["title"] = (
+            question[:42]
+        )
+
+
+    # --------------------------------------------------------
+    # SAVE USER MESSAGE
+    # --------------------------------------------------------
+
+    current_chat["messages"].append({
 
         "role":
             "user",
@@ -874,37 +973,12 @@ if send and question.strip():
     })
 
 
-    safe_question = html.escape(
-        question
-    )
-
-
-    st.markdown(
-        f"""
-<div class="user-message">
-
-<div class="user-bubble">
-{safe_question}
-</div>
-
-</div>
-""",
-        unsafe_allow_html=True
-    )
-
-
-    deep = (
-        selected_mode
-        == "Deep Research"
-    )
-
+    # --------------------------------------------------------
+    # STATUS
+    # --------------------------------------------------------
 
     status = st.empty()
 
-
-    # ========================================================
-    # DEEP RESEARCH PLANNING
-    # ========================================================
 
     if deep:
 
@@ -915,18 +989,20 @@ if send and question.strip():
             unsafe_allow_html=True
         )
 
+
         queries = create_search_queries(
             question
         )
+
 
     else:
 
         queries = [question]
 
 
-    # ========================================================
+    # --------------------------------------------------------
     # SEARCH
-    # ========================================================
+    # --------------------------------------------------------
 
     status.markdown(
         '<div class="research-status">'
@@ -947,6 +1023,7 @@ if send and question.strip():
             query,
             deep
         )
+
 
         if error:
             continue
@@ -972,24 +1049,19 @@ if send and question.strip():
                 )
 
 
-    # Keep research controlled.
-
-    max_sources = (
-        8 if deep else 5
-    )
-
+    # Limit sources
     all_sources = all_sources[
-        :max_sources
+        :(8 if deep else 5)
     ]
 
 
-    # ========================================================
-    # ANALYSIS
-    # ========================================================
+    # --------------------------------------------------------
+    # ANALYZE
+    # --------------------------------------------------------
 
     status.markdown(
         '<div class="research-status">'
-        'Comparing sources…'
+        'Checking and comparing sources…'
         '</div>',
         unsafe_allow_html=True
     )
@@ -1001,7 +1073,7 @@ if send and question.strip():
 
         all_sources,
 
-        st.session_state.messages,
+        current_chat["messages"],
 
         deep
     )
@@ -1010,41 +1082,11 @@ if send and question.strip():
     status.empty()
 
 
-    # ========================================================
-    # DISPLAY ANSWER
-    # ========================================================
-
-    st.markdown(
-        '<div class="ai-message">'
-        '<div class="ai-label">'
-        'NEXUS'
-        '</div>'
-        '<div class="ai-content">',
-        unsafe_allow_html=True
-    )
-
-
-    st.markdown(
-        answer
-    )
-
-
-    st.markdown(
-        '</div></div>',
-        unsafe_allow_html=True
-    )
-
-
-    display_sources(
-        all_sources
-    )
-
-
-    # ========================================================
+    # --------------------------------------------------------
     # SAVE ANSWER
-    # ========================================================
+    # --------------------------------------------------------
 
-    st.session_state.messages.append({
+    current_chat["messages"].append({
 
         "role":
             "assistant",
@@ -1055,3 +1097,10 @@ if send and question.strip():
         "sources":
             all_sources
     })
+
+
+    # --------------------------------------------------------
+    # RELOAD
+    # --------------------------------------------------------
+
+    st.rerun()

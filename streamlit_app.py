@@ -1,4 +1,5 @@
-import streamlit as st
+import streamlit as st, urllib.request, json
+from bs4 import BeautifulSoup
 from google import genai
 from google.genai import types
 
@@ -22,7 +23,7 @@ h1 { color: #f3f4f6 !important; font-family: sans-serif; text-align: center; mar
 div[data-testid="stPopover"] > button {
     background-color: #1e202a !important; color: #9ca3af !important; border: 1px solid #2e3244 !important;
     border-radius: 50% !important; height: 38px !important; width: 38px !important; min-width: 38px !important;
-    font-size: 20px !important; font-weight: bold !important; display: flex !important; align-items: center !important; justify-content: center !important; padding: 0 !important; padding-bottom: 2px !important;
+    font-size: 20px !important; font-weight: bold !important; display: flex !items: center !important; justify-content: center !important; padding: 0 !important; padding-bottom: 2px !important;
 }
 
 /* Custom styling to turn the sticky search button to a bright blue circle matching your reference layout */
@@ -62,34 +63,44 @@ user_input = st.chat_input("Send")
 # 🧠 BACKEND MULTI-TURN MEMORY ROUTER LOOPS
 # ==========================================
 if user_input:
-    # Save current user query into running session array cache keys
     st.session_state["chat_history"].append({"role": "user", "text": user_input})
-    
     client = genai.Client(api_key=st.secrets["GEMINI_KEY"])
     
-    # CHANGED: Locked strictly to your gemini-3.5-flash text model configuration string parameter
-    TEXT_MODEL = 'gemini-3.5-flash'
-    
+    # Try using your requested 3.5 model first
     try:
-        # Bundle conversational memory turns back to the structural context array
         formatted_contents = []
         for msg in st.session_state["chat_history"]:
             role_str = "user" if msg["role"] == "user" else "model"
             formatted_contents.append(types.Content(role=role_str, parts=[types.Part.from_text(text=msg["text"])]))
         
-        # Real Hardware Image Multi-turn Reader Sync Bridge
         if uploaded_image:
             image_bytes = uploaded_image.read()
             response = client.models.generate_content(
-                model=TEXT_MODEL, 
+                model='gemini-3.5-flash', 
                 contents=[types.Part.from_bytes(data=image_bytes, mime_type=uploaded_image.type), user_input]
             )
         else:
-            response = client.models.generate_content(model=TEXT_MODEL, contents=formatted_contents)
+            response = client.models.generate_content(model='gemini-3.5-flash', contents=formatted_contents)
             
-        # Save the final text output response right back into history speech bubbles
         st.session_state["chat_history"].append({"role": "model", "text": response.text})
+        
     except Exception as e:
-        st.session_state["chat_history"].append({"role": "model", "text": f"❌ Core Link Error: {str(e)}"})
+        # 🛠️ FALLBACK SYNC: If your key hit a quota exhaust limit on 3.5, instantly route through the stable backup core!
+        if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
+            try:
+                if uploaded_image:
+                    uploaded_image.seek(0)
+                    image_bytes = uploaded_image.read()
+                    response = client.models.generate_content(
+                        model='gemini-1.5-flash', 
+                        contents=[types.Part.from_bytes(data=image_bytes, mime_type=uploaded_image.type), user_input]
+                    )
+                else:
+                    response = client.models.generate_content(model='gemini-1.5-flash', contents=formatted_contents)
+                st.session_state["chat_history"].append({"role": "model", "text": response.text})
+            except Exception as backup_err:
+                st.session_state["chat_history"].append({"role": "model", "text": f"❌ Google Quota Exhausted for today: {str(backup_err)}"})
+        else:
+            st.session_state["chat_history"].append({"role": "model", "text": f"❌ Core Link Error: {str(e)}"})
         
     st.rerun()

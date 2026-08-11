@@ -14,7 +14,7 @@ h1 { color: #f3f4f6 !important; font-family: sans-serif; text-align: center; mar
 /* Formatting custom speech bubbles so they behave like a real human messenger application */
 .chat-bubble { padding: 12px 16px; border-radius: 20px; margin-bottom: 12px; max-width: 85%; font-family: sans-serif; font-size: 15px; line-height: 1.5; color: #f3f4f6; }
 .user-msg { background-color: #2e3244; margin-left: auto; border-bottom-right-radius: 4px; }
-.ai-msg { background-color: #1e202a; margin-right: auto; border-bottom-left-radius: 4px; border: 1px solid #2e3244; }
+.ai-msg { background-color: #1e202a; color: #f3f4f6; margin-right: auto; border-bottom-left-radius: 4px; border: 1px solid #2e3244; }
 .msg-label { font-size: 11px; color: #9ca3af; margin-bottom: 4px; font-weight: 600; text-transform: uppercase; }
 .chat-container { margin-bottom: 120px; display: flex; flex-direction: column; }
 
@@ -31,7 +31,7 @@ div[data-testid="stPopover"] > button {
 </style>
 """, unsafe_allow_html=True)
 
-# 🧠 INITIALIZE SECURE CONVERSATIONAL HISTORY BACKEND PACKETS
+# Initialize conversational memory tracking arrays
 if "chat_history" not in st.session_state: st.session_state["chat_history"] = []
 
 with st.sidebar:
@@ -42,7 +42,7 @@ with st.sidebar:
 
 st.title("✨ Nexus")
 
-# 🎯 STREAM RUNNING HISTORICAL DIALOGUE ARRAYS TO SCREEN CANVAS
+# Stream running conversational timeline directly onto the screen layout canvas
 st.markdown('<div class="chat-container">', unsafe_allow_html=True)
 for msg in st.session_state["chat_history"]:
     label_str = "You" if msg["role"] == "user" else "Nexus"
@@ -51,26 +51,27 @@ for msg in st.session_state["chat_history"]:
     st.markdown(f'<div style="text-align: {align_str};"><div class="msg-label">{label_str}</div></div><div class="chat-bubble {class_str}">{msg["text"]}</div>', unsafe_allow_html=True)
 st.markdown('</div>', unsafe_allow_html=True)
 
-# 📱 THE COMPACT INPUT INTERFACE DOCK (100% Unbreakable Mobile Layout)
-# This neat popover gives you an actual working plus symbol that pulls up your real camera gallery roll!
+# Clean utility asset drawer popover circle link
 with st.popover("+"):
     uploaded_image = st.file_uploader("📎 Attach Image Asset to Prompt Track", type=["png", "jpg", "jpeg"])
 
-# Native chat input locks a beautiful search bar to the absolute bottom row automatically
+# Native chat input locks a horizontal pill shape search bar to the absolute bottom row automatically
 user_input = st.chat_input("Send")
 
 # ==========================================
 # 🧠 BACKEND MULTI-TURN MEMORY ROUTER LOOPS
 # ==========================================
 if user_input:
-    # Save the typed prompt straight into your running background cache history parameters
+    # Save current user query into running session array cache keys
     st.session_state["chat_history"].append({"role": "user", "text": user_input})
     
     client = genai.Client(api_key=st.secrets["GEMINI_KEY"])
-    TEXT_MODEL = 'gemini-1.5-flash'
+    
+    # CHANGED: Locked strictly to your gemini-3.5-flash text model configuration string parameter
+    TEXT_MODEL = 'gemini-3.5-flash'
     
     try:
-        # Bundle every previous conversational turn back to the model context array
+        # Bundle conversational memory turns back to the structural context array
         formatted_contents = []
         for msg in st.session_state["chat_history"]:
             role_str = "user" if msg["role"] == "user" else "model"
@@ -86,7 +87,7 @@ if user_input:
         else:
             response = client.models.generate_content(model=TEXT_MODEL, contents=formatted_contents)
             
-        # Append response right back into history bubbles
+        # Save the final text output response right back into history speech bubbles
         st.session_state["chat_history"].append({"role": "model", "text": response.text})
     except Exception as e:
         st.session_state["chat_history"].append({"role": "model", "text": f"❌ Core Link Error: {str(e)}"})

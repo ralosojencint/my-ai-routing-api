@@ -11,23 +11,23 @@ st.markdown("""
 .stApp { background-color: #0d0e12; }
 h1 { color: #f3f4f6 !important; font-family: 'Inter', sans-serif; text-align: center; font-weight: 700; margin-top: 50px !important; margin-bottom: 25px !important;}
 .stDownloadButton>button { background-color: #10b981 !important; color: white !important; border-radius: 12px !important; font-weight: bold !important; height: 42px !important; border: none !important; width: 100% !important; }
-div[data-testid="stForm"] {
+form[data-testid="stForm"] {
     display: flex !important; flex-direction: row !important; flex-wrap: nowrap !important; align-items: center !important;
     background-color: #1e202a !important; border-radius: 35px !important; border: 1px solid #2e3244 !important; padding: 4px 10px !important; gap: 10px !important; width: 100% !important;
     position: fixed !important; bottom: 20px !important; left: 50% !important; transform: translateX(-50%) !important; max-width: 90% !important; z-index: 99999 !important; box-shadow: 0 4px 20px rgba(0,0,0,0.5);
 }
-div[data-testid="stForm"] > div { width: auto !important; padding: 0 !important; margin: 0 !important; display: flex !important; align-items: center !important; }
-div[data-testid="stForm"] > div:nth-child(2) { flex-grow: 2 !important; width: 100% !important; }
+form[data-testid="stForm"] > div { width: auto !important; padding: 0 !important; margin: 0 !important; display: flex !important; align-items: center !important; }
+form[data-testid="stForm"] > div:nth-child(2) { flex-grow: 2 !important; width: 100% !important; }
 div.stTextInput > div > div > input { background-color: transparent !important; color: white !important; border: none !important; padding-left: 5px !important; height: 44px !important; font-size: 15px !important; outline: none !important; }
 div.stTextInput > div > div { border: none !important; background-color: transparent !important; box-shadow: none !important; }
-div[data-testid="stFileUploader"] { max-width: 38px !important; }
+div[data-testid="stFileUploader"] { max-width: 38px !important; margin: 0 !important; padding: 0 !important; }
 div[data-testid="stFileUploaderDropzone"] { padding: 0 !important; background-color: transparent !important; border: none !important; }
 div[data-testid="stFileUploaderDropzone"] button { background-color: #2e3244 !important; color: #9ca3af !important; border-radius: 50% !important; height: 36px !important; width: 36px !important; min-width: 36px !important; font-size: 20px !important; font-weight: bold !important; padding: 0 !important; padding-bottom: 2px !important; border: none !important; }
 div[data-testid="stFileUploaderDropzone"] span, div[data-testid="stFileUploaderDropzone"] div { display: none !important; }
-div[data-testid="stAudioInput"] { max-width: 38px !important; }
+div[data-testid="stAudioInput"] { max-width: 38px !important; margin: 0 !important; padding: 0 !important; }
 div[data-testid="stAudioInput"] button { background-color: #2e3244 !important; color: #9ca3af !important; border-radius: 50% !important; height: 36px !important; width: 36px !important; min-width: 38px !important; padding: 0 !important; border: none !important; }
 div[data-testid="stAudioInput"] span { display: none !important; }
-div[data-testid="stForm"] button[type="submit"] { background-color: #d0755d !important; color: white !important; border-radius: 50% !important; height: 36px !important; width: 36px !important; min-width: 36px !important; border: none !important; font-size: 16px !important; font-weight: bold !important; display: flex !important; align-items: center !important; justify-content: center !important; padding: 0 !important; }
+form[data-testid="stForm"] button[type="submit"] { background-color: #d0755d !important; color: white !important; border-radius: 50% !important; height: 36px !important; width: 36px !important; min-width: 36px !important; border: none !important; font-size: 16px !important; font-weight: bold !important; display: flex !important; align-items: center !important; justify-content: center !important; padding: 0 !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -51,8 +51,7 @@ with st.sidebar:
         if st.button("Logout"):
             st.session_state["is_premium"] = False
             st.session_state["anonymous_clicks"] = 0
-            st.session_state["text_out"] = None
-            st.session_state["image_out"] = None
+            st.session_state["text_out"], st.session_state["image_out"] = None, None
             st.rerun()
 
 st.title("✨ Nexus")
@@ -62,7 +61,7 @@ if not st.session_state["is_premium"] and st.session_state["anonymous_clicks"] >
     st.info("💡 Upgrade to Premium membership to unlock unlimited data pipelines instantly.")
     st.markdown("[👉 Click Here to Unlock Unlimited Access](https://lemonsqueezy.com)")
 else:
-    output_holder, art_holder, pdf_holder = st.empty(), st.empty(), st.empty()
+    output_holder, pdf_holder = st.empty(), st.empty()
     if st.session_state["text_out"]:
         output_holder.markdown(f"### 📊 Live System Engine Outputs\n{st.session_state['text_out']}")
         try:
@@ -74,9 +73,7 @@ else:
             pdf_bytes = pdf.output()
             pdf_holder.download_button(label="📥 Download Response as PDF Document", data=bytes(pdf_bytes), file_name="nexus_report.pdf", mime="application/pdf")
         except Exception: pass
-    if st.session_state["image_out"]: art_holder.image(st.session_state["image_out"], use_container_width=True)
-
-    st.markdown("<br><br>", unsafe_allow_html=True)
+    if st.session_state["image_out"]: st.image(st.session_state["image_out"], use_container_width=True)
 
     with st.form(key="nexus_unified_capsule_bar", clear_on_submit=False):
         uploaded_image = st.file_uploader("+", type=["png", "jpg", "jpeg"], label_visibility="collapsed")
@@ -90,7 +87,6 @@ else:
         u_valid = 'uploaded_image' in locals() and uploaded_image is not None
         a_valid = 'audio_file' in locals() and audio_file is not None
         art_valid = 'generate_art_mode' in locals() and generate_art_mode
-        
         if not user_input and not u_valid and not a_valid:
             st.warning("⚠️ Please provide an instruction text string, voice prompt, or image file.")
         else:
@@ -98,7 +94,6 @@ else:
             client = genai.Client(api_key=st.secrets["GEMINI_KEY"])
             text_lower = user_input.lower().strip() if user_input else ""
             st.session_state["text_out"], st.session_state["image_out"] = "", None
-            
             TEXT_MODEL, ART_MODEL = 'gemini-3.5-flash', 'imagen-3.0-generate-002'
 
             if art_valid and user_input:

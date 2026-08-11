@@ -6,11 +6,11 @@ from google.genai import types
 # Configure luxury full-width layout canvas
 st.set_page_config(page_title="Nexus", page_icon="✨", layout="centered")
 
+# Visual CSS layout overrides to force a true horizontal mobile pill bar container shape
 st.markdown("""
 <style>
 .stApp { background-color: #0d0e12; }
 h1 { color: #f3f4f6 !important; font-family: 'Inter', sans-serif; text-align: center; font-weight: 700; margin-top: 30px !important; margin-bottom: 20px !important;}
-div[data-testid="stTextInput"], div[data-testid="stCheckbox"], form[data-testid="stForm"] { display: none !important; }
 
 /* Elegant custom message speech bubbles formatting */
 .chat-bubble { padding: 12px 16px; border-radius: 20px; margin-bottom: 12px; max-width: 85%; font-family: 'Inter', sans-serif; font-size: 15px; line-height: 1.5; }
@@ -20,10 +20,83 @@ div[data-testid="stTextInput"], div[data-testid="stCheckbox"], form[data-testid=
 
 /* Keeps scrolling space optimized above the sticky bottom capsule dock */
 .chat-container { margin-bottom: 110px; display: flex; flex-direction: column; }
+
+/* FORCING NATIVE CONTROLS ONTO 1 SINGLE HORIZONTAL PILL DOCK CAPSULE */
+form[data-testid="stForm"] {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    align-items: center !important;
+    background-color: #1e202a !important;
+    border-radius: 35px !important;
+    border: 1px solid #2e3244 !important;
+    padding: 6px 12px !important;
+    gap: 10px !important;
+    width: 100% !important;
+    position: fixed !important;
+    bottom: 20px !important; /* Locks capsule row flat to the bottom of the screen */
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    max-width: 90% !important;
+    z-index: 99999 !important;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+}
+
+/* Ensuring all internal sub-containers strip margins and sit inline flat */
+form[data-testid="stForm"] > div { width: auto !important; padding: 0 !important; margin: 0 !important; display: flex !important; align-items: center !important; }
+form[data-testid="stForm"] > div:nth-child(2) { flex-grow: 2 !important; width: 100% !important; }
+
+/* Removing clunky borders around the text bar */
+div.stTextInput { width: 100% !important; padding: 0 !important; margin: 0 !important; }
+div.stTextInput > div > div > input {
+    background-color: transparent !important;
+    color: white !important;
+    border: none !important;
+    padding-left: 5px !important;
+    height: 44px !important;
+    font-size: 15px !important;
+    outline: none !important;
+}
+div.stTextInput > div > div { border: none !important; background-color: transparent !important; box-shadow: none !important; }
+
+/* Turning the file upload box into a clean grey circular plus icon inside the bar */
+div[data-testid="stFileUploader"] { max-width: 38px !important; margin: 0 !important; padding: 0 !important; }
+div[data-testid="stFileUploaderDropzone"] { padding: 0 !important; background-color: transparent !important; border: none !important; }
+div[data-testid="stFileUploaderDropzone"] button {
+    background-color: #2e3244 !important;
+    color: #9ca3af !important;
+    border-radius: 50% !important;
+    height: 36px !important;
+    width: 36px !important;
+    min-width: 36px !important;
+    font-size: 20px !important;
+    font-weight: bold !important;
+    padding: 0 !important;
+    padding-bottom: 2px !important;
+    border: none !important;
+}
+div[data-testid="stFileUploaderDropzone"] span, div[data-testid="stFileUploaderDropzone"] div { display: none !important; }
+
+/* Custom blue circle submit capsule button formatting inside the bar */
+form[data-testid="stForm"] button[type="submit"] {
+    background-color: #2563eb !important;
+    color: white !important;
+    border-radius: 50% !important;
+    height: 36px !important;
+    width: 36px !important;
+    min-width: 36px !important;
+    border: none !important;
+    font-size: 16px !important;
+    font-weight: bold !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    padding: 0 !important;
+}
+form[data-testid="stForm"] button[type="submit"]:hover { background-color: #1d4ed8 !important; }
 </style>
 """, unsafe_allow_html=True)
 
-# 🧠 INITIALIZE CONVERSATIONAL MEMORY BACKEND TRACKERS
 if "anonymous_clicks" not in st.session_state: st.session_state["anonymous_clicks"] = 0
 if "is_premium" not in st.session_state: st.session_state["is_premium"] = False
 if "chat_history" not in st.session_state: st.session_state["chat_history"] = []
@@ -43,7 +116,7 @@ st.title("✨ Nexus")
 if not st.session_state["is_premium"] and st.session_state["anonymous_clicks"] >= 3:
     st.error("🛑 Limit Reached. Upgrade to Premium for unlimited access.")
 else:
-    # 🎯 PRINT RUNNING TALK History Array
+    # 🎯 PRINT RUNNING TALK HISTORIES ONTO SCREEN CANVAS
     st.markdown('<div class="chat-container">', unsafe_allow_html=True)
     for msg in st.session_state["chat_history"]:
         if msg["role"] == "user":
@@ -52,44 +125,26 @@ else:
             st.markdown(f'<div style="text-align: left;"><div class="msg-label">Nexus</div></div><div class="chat-bubble ai-msg">{msg["text"]}</div>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # 📱 UNBREAKABLE PIXEL-PERFECT HORIZONTAL CAPSULE BAR
-    st.html("""
-    <div style="background-color:#0d0e12; padding:10px; font-family:sans-serif; width:100%; box-sizing:border-box; position:fixed; bottom:20px; left:0; right:0; z-index:999999;">
-        <form id="pill_chat_form" style="display:flex; align-items:center; background-color:#1e202a; border-radius:30px; border:1px solid #2e3244; padding:6px 12px; gap:10px; max-width:500px; margin:0 auto; width:90%;">
-            <button type="button" onclick="alert('Image handler ready.')" style="background-color:#2e3244; color:#9ca3af; border:none; border-radius:50%; width:36px; height:36px; min-width:36px; font-size:20px; font-weight:bold; cursor:pointer; display:flex; align-items:center; justify-content:center; padding:0; outline:none;">+</button>
-            <input type="text" id="pill_prompt_input" placeholder="Send" style="background-color:transparent; color:white; border:none; width:100%; height:36px; font-size:15px; outline:none; padding:0 4px;">
-            <button type="submit" style="background-color:#2563eb; color:white; border:none; border-radius:50%; width:36px; height:36px; min-width:36px; font-size:18px; font-weight:bold; cursor:pointer; display:flex; align-items:center; justify-content:center; padding:0; outline:none;">↑</button>
-        </form>
-    </div>
-    <script>
-    document.getElementById('pill_chat_form').addEventListener('submit', function(e) {
-        e.preventDefault();
-        var val = document.getElementById('pill_prompt_input').value.trim();
-        if(val) {
-            window.parent.postMessage({type: 'streamlit:set_widget_value', from: 'unbreakable_direct_input', value: val}, '*');
-            document.getElementById('pill_prompt_input').value = "";
-        }
-    });
-    </script>
-    """)
-    
-    # Secure native background value track synchronization capture field parameters
-    user_input = st.text_input("", key="unbreakable_direct_input")
+    # =========================================================================================
+    # 📱 THE NATIVE HORIZONTAL PILL BAR CAPSULE (Plus, Text Bar, Blue Button ALL COMPRESSED INLINE)
+    # ========================================================================================
+    with st.form(key="nexus_unbreakable_capsule_bar", clear_on_submit=True):
+        uploaded_image = st.file_uploader("+", type=["png", "jpg", "jpeg"], label_visibility="collapsed")
+        user_input = st.text_input("", placeholder="Send", label_visibility="collapsed")
+        execute_btn = st.form_submit_button(label="↑")
 
     # ==========================================
-    # 🧠 BACKEND MULTI-TURN CHAT CONTEXT ROUTER (Fixed Loop Deadlock)
+    # 🧠 BACKEND MULTI-TURN CHAT CONTEXT ROUTER (Deadlock Removed)
     # ==========================================
-    if user_input:
+    if execute_btn and user_input:
         if not st.session_state["is_premium"]: st.session_state["anonymous_clicks"] += 1
         
-        # Append input right into memory state history layers
         st.session_state["chat_history"].append({"role": "user", "text": user_input})
         
         client = genai.Client(api_key=st.secrets["GEMINI_KEY"])
         TEXT_MODEL = 'gemini-1.5-flash'
         
         try:
-            # Reformat full running thread history context array targets
             formatted_contents = []
             for msg in st.session_state["chat_history"]:
                 role_str = "user" if msg["role"] == "user" else "model"
@@ -100,5 +155,4 @@ else:
         except Exception as e:
             st.session_state["chat_history"].append({"role": "model", "text": f"❌ Error: {str(e)}"})
             
-        # Safe layout refresh that clears out hidden input fields without breaking into a blank deadlock loop
         st.rerun()

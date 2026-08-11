@@ -7,13 +7,13 @@ import streamlit_authenticator as stauth
 
 st.set_page_config(page_title="Mobile AI Multitask Agent", page_icon="📱")
 
-# 1. NEW DATA STRUCTURE CONFIGURATION (Compliant with updated library rules)
+# 1. NEW DATA STRUCTURE CONFIGURATION (Add more customer credentials here!)
 config = {
     "credentials": {
         "usernames": {
             "admin": {
                 "name": "Premium User",
-                "password": "password123"  # Change this to any password you want to give paying clients
+                "password": "password123"  # Your secure login password
             }
         }
     },
@@ -24,7 +24,7 @@ config = {
     }
 }
 
-# 2. Initialize the Updated Login Interface Framework
+# 2. Initialize the Login Interface Framework
 authenticator = stauth.Authenticate(
     config["credentials"],
     config["cookie"]["name"],
@@ -46,7 +46,6 @@ elif st.session_state.get("authentication_status") == None:
 
 # 4. IF VALIDATED, REVEAL YOUR PREMIUM APPLICATION
 elif st.session_state.get("authentication_status"):
-    # Render customized headers and clear user controls
     st.write(f"Welcome back, **{st.session_state['name']}**!")
     authenticator.logout("Log Out", "sidebar")
     
@@ -77,18 +76,20 @@ elif st.session_state.get("authentication_status"):
                 return f"💡 AI Web Scraper Result:\n\n\"{page_text[:400]}...\""
             except Exception as e: return f"💡 AI Web Error:\nCould not read link: {str(e)}"
             
-        # Task 3: Official Active SDK Connection
+        # Task 3: Official Active SDK Connection (Updated to operational model string)
         else:
             try:
                 api_key_str = st.secrets["GEMINI_KEY"]
                 client = genai.Client(api_key=api_key_str)
+                
+                # FIXED MODEL PATH STRING
                 response = client.models.generate_content(
-                    model='gemini-2.0-flash',
+                    model='gemini-2.5-flash',
                     contents=text_input,
                 )
                 return f"🧠 Gemini AI Brain Response:\n\n{response.text}"
             except Exception as e:
-                return f"💡 AI Brain Connection Notification:\n\nProcessing error loop. Details: {str(e)}"
+                return f"💡 AI Brain Connection Notification:\n\nSystem engine processing error. Details: {str(e)}"
 
     if execute_btn and user_input:
         with st.spinner("AI Processing..."):

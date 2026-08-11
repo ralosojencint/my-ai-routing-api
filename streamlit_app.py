@@ -3,14 +3,19 @@ import html
 import requests
 import streamlit as st
 
+# ============================================================
+# NEXUS CONFIG
+# ============================================================
+
 st.set_page_config(
     page_title="NEXUS",
     page_icon="N",
-    layout="centered"
+    layout="centered",
+    initial_sidebar_state="expanded"
 )
 
 # ============================================================
-# KEYS
+# API KEYS
 # ============================================================
 
 def get_key(name):
@@ -20,13 +25,16 @@ def get_key(name):
             return value
     except Exception:
         pass
+
     return os.getenv(name, "")
 
-GROQ = get_key("GROQ_API_KEY")
-TAVILY = get_key("TAVILY_API_KEY")
+
+GROQ_API_KEY = get_key("GROQ_API_KEY")
+TAVILY_API_KEY = get_key("TAVILY_API_KEY")
+
 
 # ============================================================
-# SESSION
+# SESSION STATE
 # ============================================================
 
 if "chats" not in st.session_state:
@@ -37,139 +45,212 @@ if "chats" not in st.session_state:
         }
     }
 
-if "chat_id" not in st.session_state:
-    st.session_state.chat_id = "chat_1"
+if "current_chat" not in st.session_state:
+    st.session_state.current_chat = "chat_1"
 
-chat = st.session_state.chats[st.session_state.chat_id]
+
+chat = st.session_state.chats[
+    st.session_state.current_chat
+]
+
 
 # ============================================================
-# CSS
+# NEXUS UI
 # ============================================================
 
 st.markdown("""
 <style>
+
+/* ================= APP ================= */
+
 .stApp {
     background: #0b0b0d;
     color: #eeeeee;
 }
 
 .block-container {
-    max-width: 760px;
-    padding-top: 45px;
-    padding-bottom: 180px;
+    max-width: 780px;
+    padding-top: 40px;
+    padding-bottom: 130px;
 }
 
-.nexus {
+
+/* ================= NEXUS ================= */
+
+.nexus-logo {
     text-align: center;
-    font-size: 34px;
+    font-size: 32px;
     font-weight: 700;
     letter-spacing: 8px;
+    color: #f5f5f5;
+    margin-top: 10px;
 }
 
-.sub {
+.nexus-subtitle {
     text-align: center;
-    color: #68686f;
-    font-size: 13px;
-    margin: 12px 0 45px;
+    color: #66666d;
+    font-size: 12px;
+    margin-top: 8px;
+    margin-bottom: 45px;
 }
 
-.user {
+
+/* ================= USER MESSAGE ================= */
+
+.user-row {
     display: flex;
     justify-content: flex-end;
-    margin: 20px 0;
+    margin: 18px 0;
 }
 
-.bubble {
+.user-bubble {
+    max-width: 78%;
     background: #19191d;
     border: 1px solid #29292e;
     padding: 12px 16px;
     border-radius: 18px 18px 5px 18px;
-    max-width: 78%;
     line-height: 1.55;
 }
 
-.ai {
+
+/* ================= AI MESSAGE ================= */
+
+.ai-message {
     margin: 25px 0 35px;
 }
 
-.label {
-    font-size: 11px;
+.ai-label {
+    color: #77777f;
+    font-size: 10px;
     letter-spacing: 2px;
-    color: #777777;
     margin-bottom: 8px;
 }
 
-.answer {
-    line-height: 1.7;
+.ai-answer {
+    color: #eeeeee;
     font-size: 15px;
+    line-height: 1.7;
 }
 
-.source {
+
+/* ================= SOURCES ================= */
+
+.sources-label {
+    color: #66666d;
+    font-size: 10px;
+    letter-spacing: 1.5px;
+    margin-top: 22px;
+    margin-bottom: 6px;
+}
+
+.source-item {
     border-top: 1px solid #222226;
-    padding: 10px 0;
+    padding: 9px 0;
 }
 
-.source small {
-    color: #666666;
-}
-
-.status {
-    color: #777777;
+.source-item a {
+    color: #dddddf;
+    text-decoration: none;
     font-size: 13px;
-    margin: 10px 0;
 }
+
+.source-url {
+    color: #55555d;
+    font-size: 10px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+
+/* ================= SIDEBAR ================= */
 
 [data-testid="stSidebar"] {
     background: #0e0e10;
 }
 
-div[data-testid="stForm"] {
-    position: fixed !important;
-    bottom: 15px !important;
-    left: 50% !important;
-    transform: translateX(-50%) !important;
-    width: min(720px, calc(100vw - 24px)) !important;
-    z-index: 999999 !important;
-    background: #151518 !important;
-    border: 1px solid #303035 !important;
-    border-radius: 18px !important;
-    padding: 10px !important;
-    box-shadow: 0 12px 45px rgba(0,0,0,.55) !important;
+[data-testid="stSidebar"] hr {
+    border-color: #222226;
 }
 
-div[data-testid="stForm"] input {
+
+/* ================= BOTTOM COMPOSER ================= */
+
+/*
+   The composer is kept in the normal Streamlit flow.
+   This prevents Streamlit from accidentally making
+   the whole page a search field.
+*/
+
+.composer-box {
+    background: #151518;
+    border: 1px solid #303035;
+    border-radius: 18px;
+    padding: 8px;
+    margin-top: 35px;
+}
+
+
+/* ================= INPUT ================= */
+
+div[data-testid="stTextInput"] input {
     background: #151518 !important;
     color: #eeeeee !important;
-    border: 0 !important;
-    box-shadow: none !important;
+    border: 1px solid #303035 !important;
+    border-radius: 13px !important;
+    height: 44px !important;
 }
 
-div[data-testid="stForm"] div[data-baseweb="select"] > div {
+div[data-testid="stTextInput"] label {
+    display: none !important;
+}
+
+
+/* ================= SELECT ================= */
+
+div[data-testid="stSelectbox"] label {
+    display: none !important;
+}
+
+div[data-testid="stSelectbox"] div[data-baseweb="select"] > div {
     background: #19191d !important;
+    color: #eeeeee !important;
     border: 1px solid #303035 !important;
     border-radius: 10px !important;
 }
 
-div[data-testid="stForm"] button {
+
+/* ================= BUTTON ================= */
+
+div[data-testid="stFormSubmitButton"] button {
     border-radius: 10px !important;
+    min-height: 40px !important;
 }
+
+
+/* ================= MOBILE ================= */
 
 @media (max-width: 600px) {
+
     .block-container {
-        padding-bottom: 200px;
+        padding-top: 25px;
+        padding-bottom: 110px;
     }
 
-    .nexus {
-        font-size: 29px;
+    .nexus-logo {
+        font-size: 27px;
+        letter-spacing: 6px;
     }
 
-    div[data-testid="stForm"] {
-        width: calc(100vw - 20px) !important;
-        bottom: 8px !important;
+    .user-bubble {
+        max-width: 88%;
     }
+
 }
+
 </style>
 """, unsafe_allow_html=True)
+
 
 # ============================================================
 # SIDEBAR
@@ -179,346 +260,423 @@ with st.sidebar:
 
     st.markdown("## NEXUS")
 
-    if st.button("＋ New chat", use_container_width=True):
+    if st.button(
+        "＋ New chat",
+        use_container_width=True
+    ):
 
-        number = len(st.session_state.chats) + 1
-        new_id = "chat_" + str(number)
+        number = len(
+            st.session_state.chats
+        ) + 1
 
-        st.session_state.chats[new_id] = {
+        new_chat_id = "chat_" + str(number)
+
+        st.session_state.chats[
+            new_chat_id
+        ] = {
             "title": "New conversation",
             "messages": []
         }
 
-        st.session_state.chat_id = new_id
+        st.session_state.current_chat = new_chat_id
+
         st.rerun()
 
+
     st.divider()
+
     st.caption("HISTORY")
 
-    items = list(st.session_state.chats.items())
-    items.reverse()
 
-    for cid, item in items:
+    history = list(
+        st.session_state.chats.items()
+    )
 
-        title = item["title"][:38]
+    history.reverse()
+
+
+    for chat_id, chat_data in history:
+
+        title = chat_data["title"]
+
+        if not title:
+            title = "New conversation"
+
+        title = title[:38]
+
 
         if st.button(
             title,
-            key="history_" + cid,
+            key="history_" + chat_id,
             use_container_width=True
         ):
-            st.session_state.chat_id = cid
+
+            st.session_state.current_chat = chat_id
+
             st.rerun()
 
+
 # ============================================================
-# HEADER
+# NEXUS HEADER
 # ============================================================
 
 st.markdown(
-    '<div class="nexus">NEXUS</div>',
+    '<div class="nexus-logo">NEXUS</div>',
     unsafe_allow_html=True
 )
 
 st.markdown(
-    '<div class="sub">Research first. Answer second.</div>',
+    '<div class="nexus-subtitle">'
+    'Research first. Answer second.'
+    '</div>',
     unsafe_allow_html=True
 )
 
+
 # ============================================================
-# SEARCH WEB
+# WEB SEARCH
 # ============================================================
 
-def search_web(query, deep=False):
+def web_search(query, deep=False):
 
-    if not TAVILY:
+    if not TAVILY_API_KEY:
         return []
+
 
     try:
 
-        depth = "advanced" if deep else "basic"
-        amount = 8 if deep else 4
-
         response = requests.post(
+
             "https://api.tavily.com/search",
+
             json={
-                "api_key": TAVILY,
+                "api_key": TAVILY_API_KEY,
                 "query": query,
-                "search_depth": depth,
+                "search_depth": (
+                    "advanced"
+                    if deep
+                    else "basic"
+                ),
                 "topic": "general",
-                "max_results": amount,
-                "include_answer": False
+                "max_results": (
+                    8
+                    if deep
+                    else 4
+                )
             },
+
             timeout=35
         )
+
 
         if response.status_code != 200:
             return []
 
+
         data = response.json()
 
-        results = []
 
-        for item in data.get("results", []):
+        sources = []
 
-            results.append({
-                "title": item.get("title", "Source"),
-                "url": item.get("url", ""),
-                "content": item.get("content", "")[:850]
+
+        for item in data.get(
+            "results",
+            []
+        ):
+
+            sources.append({
+
+                "title": item.get(
+                    "title",
+                    "Source"
+                ),
+
+                "url": item.get(
+                    "url",
+                    ""
+                ),
+
+                "content": item.get(
+                    "content",
+                    ""
+                )[:900]
+
             })
 
-        return results
+
+        return sources
+
 
     except Exception:
+
         return []
 
+
 # ============================================================
-# AI
+# AI ANSWER
 # ============================================================
 
-def ask_ai(question, sources, deep):
+def generate_answer(
+    question,
+    sources,
+    deep
+):
 
-    if not GROQ:
-        return "GROQ_API_KEY is missing."
+    if not GROQ_API_KEY:
+
+        return (
+            "GROQ_API_KEY is missing."
+        )
+
 
     evidence = ""
 
-    for i, source in enumerate(sources[:8], 1):
+
+    for i, source in enumerate(
+        sources[:8],
+        1
+    ):
 
         evidence += (
-            "\nSOURCE " + str(i) +
-            "\nTitle: " + source["title"] +
-            "\nURL: " + source["url"] +
-            "\nEvidence: " + source["content"] +
-            "\n"
+            "\nSOURCE "
+            + str(i)
+            + "\nTitle: "
+            + source["title"]
+            + "\nURL: "
+            + source["url"]
+            + "\nEvidence: "
+            + source["content"]
+            + "\n"
         )
 
-    history = ""
+
+    conversation = ""
+
 
     for message in chat["messages"][-4:]:
 
-        history += (
-            "\n" +
-            message["role"] +
-            ": " +
-            message["content"][:400]
+        conversation += (
+            "\n"
+            + message["role"]
+            + ": "
+            + message["content"][:400]
         )
 
-    mode = "DEEP RESEARCH" if deep else "QUICK"
+
+    mode = (
+        "DEEP RESEARCH"
+        if deep
+        else "QUICK RESEARCH"
+    )
+
 
     prompt = f"""
 You are NEXUS.
 
-Mode: {mode}
+Mode:
+{mode}
 
-Question:
+USER QUESTION:
 {question}
 
-Web evidence:
+WEB RESEARCH:
 {evidence}
 
-Recent conversation:
-{history}
+RECENT CONVERSATION:
+{conversation}
 
-Answer accurately.
+Give the best answer possible.
 
 Rules:
-- Never invent facts.
-- Use [1], [2], etc. for important sources.
-- Compare sources when useful.
-- Say when evidence is insufficient.
-- Be direct and useful.
-- Have a smart, calm personality.
-- Light natural humor is allowed.
-- Never force jokes.
+
+1. Do not invent facts.
+2. Use the web evidence.
+3. Cite important claims using [1], [2], etc.
+4. Compare sources when appropriate.
+5. If evidence is weak or conflicting, say so.
+6. If you do not know, say you do not know.
+7. Be direct.
+8. Be intelligent.
+9. Have a little natural humor.
+10. Never force jokes or sound cringe.
+
+Accuracy is more important than confidence.
 """
+
 
     try:
 
         response = requests.post(
+
             "https://api.groq.com/openai/v1/chat/completions",
+
             headers={
-                "Authorization": "Bearer " + GROQ,
-                "Content-Type": "application/json"
+                "Authorization":
+                    "Bearer " + GROQ_API_KEY,
+
+                "Content-Type":
+                    "application/json"
             },
+
             json={
-                "model": "llama-3.3-70b-versatile",
+
+                "model":
+                    "llama-3.3-70b-versatile",
+
                 "messages": [
+
                     {
-                        "role": "system",
-                        "content": "You are NEXUS."
+                        "role":
+                            "system",
+
+                        "content":
+                            "You are NEXUS."
                     },
+
                     {
-                        "role": "user",
-                        "content": prompt
+                        "role":
+                            "user",
+
+                        "content":
+                            prompt
                     }
+
                 ],
-                "temperature": 0.4,
-                "max_completion_tokens": 1800
+
+                "temperature":
+                    0.4,
+
+                "max_completion_tokens":
+                    1800
             },
+
             timeout=90
         )
 
+
         if response.status_code == 413:
-            return "The research data was too large. Try a shorter question."
+
+            return (
+                "The research package was "
+                "too large. Try a shorter "
+                "question."
+            )
+
 
         if response.status_code != 200:
-            return "NEXUS AI error: " + response.text
+
+            return (
+                "NEXUS AI error: "
+                + response.text
+            )
+
 
         data = response.json()
 
-        return data["choices"][0]["message"]["content"]
 
-    except Exception as e:
+        return data[
+            "choices"
+        ][0][
+            "message"
+        ][
+            "content"
+        ]
 
-        return "NEXUS error: " + str(e)
+
+    except Exception as error:
+
+        return (
+            "NEXUS error: "
+            + str(error)
+        )
+
 
 # ============================================================
-# SHOW CHAT
+# DISPLAY CONVERSATION
 # ============================================================
 
 for message in chat["messages"]:
 
     if message["role"] == "user":
 
-        text = html.escape(message["content"])
+        text = html.escape(
+            message["content"]
+        )
 
         st.markdown(
-            '<div class="user">'
-            '<div class="bubble">' +
-            text +
-            '</div></div>',
+            '<div class="user-row">'
+            '<div class="user-bubble">'
+            + text +
+            '</div>'
+            '</div>',
             unsafe_allow_html=True
         )
+
 
     else:
 
         st.markdown(
-            '<div class="ai">'
-            '<div class="label">NEXUS</div>'
-            '<div class="answer">',
+            '<div class="ai-message">'
+            '<div class="ai-label">'
+            'NEXUS'
+            '</div>'
+            '<div class="ai-answer">',
             unsafe_allow_html=True
         )
-
-        st.markdown(message["content"])
 
         st.markdown(
-            '</div></div>',
+            message["content"]
+        )
+
+        st.markdown(
+            '</div>'
+            '</div>',
             unsafe_allow_html=True
         )
 
-        sources = message.get("sources", [])
+
+        sources = message.get(
+            "sources",
+            []
+        )
+
 
         if sources:
 
-            st.caption("SOURCES")
+            st.markdown(
+                '<div class="sources-label">'
+                'SOURCES'
+                '</div>',
+                unsafe_allow_html=True
+            )
 
-            for i, source in enumerate(sources, 1):
 
-                title = html.escape(source["title"])
-                url = html.escape(source["url"])
+            for i, source in enumerate(
+                sources,
+                1
+            ):
 
-                st.markdown(
-                    '<div class="source">'
-                    '<b>[' + str(i) + ']</b> '
-                    '<a href="' + url + '" target="_blank">'
-                    + title +
-                    '</a><br>'
-                    '<small>' + url + '</small>'
-                    '</div>',
-                    unsafe_allow_html=True
+                title = html.escape(
+                    source["title"]
                 )
 
-# ============================================================
-# BOTTOM COMPOSER
-# ============================================================
+                url = html.escape(
+                    source["url"]
+                )
 
-with st.form("nexus_composer", clear_on_submit=True):
 
-    question = st.text_input(
-        "Question",
-        placeholder="Ask NEXUS anything...",
-        label_visibility="collapsed"
-    )
-
-    col1, col2 = st.columns([3, 1])
-
-    with col1:
-
-        mode = st.selectbox(
-            "Research mode",
-            ["Quick", "Deep Research"],
-            label_visibility="collapsed"
-        )
-
-    with col2:
-
-        send = st.form_submit_button(
-            "↑ Send",
-            use_container_width=True
-        )
-
-# ============================================================
-# PROCESS
-# ============================================================
-
-if send and question.strip():
-
-    question = question.strip()
-
-    deep = mode == "Deep Research"
-
-    if chat["title"] == "New conversation":
-
-        chat["title"] = question[:38]
-
-    chat["messages"].append({
-        "role": "user",
-        "content": question
-    })
-
-    status = st.empty()
-
-    if deep:
-
-        status.markdown(
-            '<div class="status">'
-            'Researching multiple sources...'
-            '</div>',
-            unsafe_allow_html=True
-        )
-
-        sources = search_web(question, True)
-
-    else:
-
-        status.markdown(
-            '<div class="status">'
-            'Searching...'
-            '</div>',
-            unsafe_allow_html=True
-        )
-
-        sources = search_web(question, False)
-
-    status.markdown(
-        '<div class="status">'
-        'Analyzing evidence...'
-        '</div>',
-        unsafe_allow_html=True
-    )
-
-    answer = ask_ai(
-        question,
-        sources,
-        deep
-    )
-
-    chat["messages"].append({
-        "role": "assistant",
-        "content": answer,
-        "sources": sources
-    })
-
-    status.empty()
-
-    st
+                st.markdown(
+                    '<div class="source-item">'
+                    '<b>['
+                    + str(i)
+                    + ']</b> '
+                    '<a href="'
+                    + url
+                    + '" target="_blank">'
+                    + title
+                    + '</a>'
+                    '<div class="source-url">'
+                    + url
+                    + '</div>'
+                    '</div>',
+                    unsafe

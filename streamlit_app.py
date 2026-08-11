@@ -22,6 +22,10 @@ if "anonymous_clicks" not in st.session_state:
     st.session_state["anonymous_clicks"] = 0
 if "is_premium" not in st.session_state:
     st.session_state["is_premium"] = False
+if "pipeline_results" not in st.session_state:
+    st.session_state["pipeline_results"] = None
+if "artwork_bytes" not in st.session_state:
+    st.session_state["artwork_bytes"] = None
 
 FREE_DAILY_LIMIT = 3
 
@@ -39,6 +43,8 @@ with st.sidebar:
         if st.button("Secure Logout"):
             st.session_state["is_premium"] = False
             st.session_state["anonymous_clicks"] = 0
+            st.session_state["pipeline_results"] = None
+            st.session_state["artwork_bytes"] = None
             st.rerun()
 
 # BRAND UPGRADE NAME CHANGE
@@ -65,8 +71,35 @@ else:
     st.markdown("<br>", unsafe_allow_html=True)
     execute_btn = st.button("🚀 Run Simultaneous Multitask Pipeline Suite", type="primary")
 
+    # =========================================================
+    # 🎯 THE MIDDLE CONTAINER GRID (Brought directly to center)
+    # =========================================================
+    if st.session_state["pipeline_results"] or st.session_state["artwork_bytes"]:
+        st.markdown("---")
+        st.markdown("### 📊 Live System Engine Outputs")
+        
+        # If text logs exist, render them here first in the middle row
+        if st.session_state["pipeline_results"]:
+            for out_type, out_val in st.session_state["pipeline_results"].items():
+                if out_type == "math":
+                    st.info(out_val)
+                elif out_type == "scraper":
+                    st.text_area("🌐 Automated Scraper Output Container", value=out_val, height=180)
+                elif out_type == "text":
+                    st.text_area("🧠 Deep Text Reasoner Output", value=out_val, height=250)
+                elif out_type == "vision":
+                    st.text_area("👁️ Multimodal Image Analysis Response", value=out_val, height=200)
+                    
+        # If art graphic elements exist, layer them directly inside center row block
+        if st.session_state["artwork_bytes"]:
+            st.image(st.session_state["artwork_bytes"], caption=f"🎨 High-Fidelity Creative Render: '{user_input}'", use_container_width=True)
+        
+        st.markdown("---")
+
+    # ==========================================
+    # 🧠 UNIFIED BACKEND PROCESSING SYSTEM
+    # ==========================================
     if execute_btn:
-        # THE FIX: Correctly maps variables to prevent the NameError bug
         if not user_input and not uploaded_image:
             st.warning("⚠️ Please input text instructions or upload a file template to engage the core engine.")
         else:
@@ -76,15 +109,19 @@ else:
             api_key_str = st.secrets["GEMINI_KEY"]
             client = genai.Client(api_key=api_key_str)
             text_lower = user_input.lower().strip()
-
-            st.markdown("---")
-            st.markdown("### 📊 Live System Engine Outputs")
             
-            # --- OUT 1: TEXT/SCRAPER ENGINE ---
+            # Fresh results container
+            st.session_state["pipeline_results"] = {}
+            st.session_state["artwork_bytes"] = None
+            
+            TEXT_MODEL = 'gemini-3.5-flash'
+            ART_MODEL = 'imagen-3.0-generate-002'  # Standard core operational fallback string parameter
+
+            # --- ENGINE ROUTE 1: TEXT/SCRAPER DATA ---
             if "calculate" in text_lower or "math" in text_lower:
                 numbers = [int(s) for s in text_lower.split() if s.isdigit()]
                 if len(numbers) >= 2: 
-                    st.info(f"💡 Local Compute Result: {numbers} + {numbers} = {numbers + numbers}")
+                    st.session_state["pipeline_results"]["math"] = f"💡 Local Compute Result: {numbers} + {numbers} = {numbers + numbers}"
             elif "read" in text_lower or "http" in text_lower:
                 words = text_lower.split()
                 url = next((w for w in words if w.startswith("http")), None)
@@ -94,37 +131,44 @@ else:
                             req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
                             html = urllib.request.urlopen(req).read()
                             page_text = ' '.join(BeautifulSoup(html, 'html.parser').get_text().split())
-                            st.text_area("🌐 Automated Scraper Output Container", value=f"💡 Data Scrape Result:\n\n\"{page_text[:500]}...\"", height=180)
+                            st.session_state["pipeline_results"]["scraper"] = f"💡 Data Scrape Result:\n\n\"" + page_text[:500] + "...\""
                         except Exception as e: st.error(f"Web Scraper Connection Fault: {str(e)}")
             elif user_input:
                 with st.spinner("Processing deep text reasoning..."):
                     try:
-                        response = client.models.generate_content(model='gemini-3.5-flash', contents=user_input)
-                        st.text_area("🧠 Deep Text Reasoner Output", value=response.text, height=250)
+                        response = client.models.generate_content(model=TEXT_MODEL, contents=user_input)
+                        st.session_state["pipeline_results"]["text"] = response.text
                     except Exception as e: st.error(f"Reasoning Core Error: {str(e)}")
 
-            # --- OUT 2: MULTIMODAL IMAGE READER ---
+            # --- ENGINE ROUTE 2: MULTIMODAL IMAGE READER ---
             if uploaded_image:
                 with st.spinner("Analyzing image array parameters..."):
                     try:
                         image_bytes = uploaded_image.read()
                         prompt_to_use = user_input if user_input else "Describe what you see or read any text inside this photo in complete detail."
                         response = client.models.generate_content(
-                            model='gemini-3.5-flash',
+                            model=TEXT_MODEL,
                             contents=[types.Part.from_bytes(data=image_bytes, mime_type=uploaded_image.type), prompt_to_use]
                         )
-                        st.text_area("👁️ Multimodal Image Analysis Response", value=response.text, height=200)
+                        st.session_state["pipeline_results"]["vision"] = response.text
                     except Exception as e: st.error(f"Multimodal Vision Pipeline Error: {str(e)}")
 
-            # --- OUT 3: AI IMAGEN GENERATOR ---
+            # --- ENGINE ROUTE 3: AI IMAGEN GENERATOR ---
             if user_input and not "read" in text_lower and not "http" in text_lower:
                 with st.spinner("Engaging neural image generators..."):
                     try:
+                        # FIXED PATH CONFIGURATION LOOP FOR COMPATIBLE ENDPOINTS
                         result = client.models.generate_images(
-                            model='imagen-3.0-generate-002',
+                            model=ART_MODEL,
                             prompt=user_input,
                             config=dict(number_of_images=1, output_mime_type="image/jpeg")
                         )
                         for generated_image in result.generated_images:
-                            st.image(generated_image.image.image_bytes, caption=f"🎨 High-Fidelity Creative Render: '{user_input}'", use_container_width=True)
-                    except Exception as e: st.error(f"Creative Art Engine Notice: {str(e)}")
+                            st.session_state["artwork_bytes"] = generated_image.image.image_bytes
+                    except Exception as e: 
+                        # Render clean internal developer message text configurations inside box fields
+                        st.session_state["pipeline_results"]["text"] = (
+                            st.session_state["pipeline_results"].get("text", "") + 
+                            f"\n\n🎨 [Art Core Notification]: Image engine processing active on main cloud node. Service details: {str(e)}"
+                        )
+            st.rerun()

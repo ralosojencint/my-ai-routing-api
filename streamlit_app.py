@@ -1,6 +1,7 @@
 import streamlit as st
-from google import genai
-from google.genai import types
+import urllib.request, json
+from bs4 import BeautifulSoup
+from groq import Groq
 
 # Configure luxury centered full-width mobile view
 st.set_page_config(page_title="Nexus", page_icon="✨", layout="centered")
@@ -53,41 +54,38 @@ st.markdown('</div>', unsafe_allow_html=True)
 
 # Clean utility asset drawer popover circle link
 with st.popover("+"):
-    uploaded_image = st.file_uploader("📎 Attach Image Asset to Prompt Track", type=["png", "jpg", "jpeg"])
+    st.info("📎 Llama 3.3 70B runs on Groq as a pure text-intelligence pipeline.")
 
 # Native chat input locks a horizontal pill shape search bar to the absolute bottom row automatically
 user_input = st.chat_input("Send")
 
 # ==========================================
-# 🧠 BACKEND MULTI-TURN MEMORY ROUTER LOOPS
+# 🧠 BACKEND GROQ LLAMA 3.3 CONTEXT ROUTER
 # ==========================================
 if user_input:
+    # Append the incoming user prompt query straight to history memory state keys
     st.session_state["chat_history"].append({"role": "user", "text": user_input})
-    client = genai.Client(api_key=st.secrets["GEMINI_KEY"])
-    
-    # 🎯 THE ABSOLUTE DEFINITIVE FIX: Using the Interactions API model path required by Google's modern SDK
-    TEXT_MODEL = 'gemini-interactions-flash'
     
     try:
-        # Bundle conversational memory turns back to the structural context array
-        formatted_contents = []
-        for msg in st.session_state["chat_history"]:
-            role_str = "user" if msg["role"] == "user" else "model"
-            formatted_contents.append(types.Content(role=role_str, parts=[types.Part.from_text(text=msg["text"])]))
+        # Access your background Streamlit Secrets vault for your Groq API Token
+        api_key_str = st.secrets["GROQ_API_KEY"]
+        client = Groq(api_key=api_key_str)
         
-        # Real Hardware Image Multi-turn Reader Sync Bridge
-        if uploaded_image:
-            image_bytes = uploaded_image.read()
-            response = client.models.generate_content(
-                model=TEXT_MODEL, 
-                contents=[types.Part.from_bytes(data=image_bytes, mime_type=uploaded_image.type), user_input]
-            )
-        else:
-            response = client.models.generate_content(model=TEXT_MODEL, contents=formatted_contents)
+        # Build out structural multi-turn messaging context payloads
+        formatted_messages = []
+        for msg in st.session_state["chat_history"]:
+            formatted_messages.append({"role": msg["role"], "content": msg["text"]})
             
-        # Save the final text output response right back into history speech bubbles
-        st.session_state["chat_history"].append({"role": "model", "text": response.text})
+        # Execute absolute low-latency compute call directly through Groq core framework endpoints
+        completion = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=formatted_messages
+        )
+        
+        ai_response_text = completion.choices[0].message.content
+        st.session_state["chat_history"].append({"role": "assistant", "text": ai_response_text})
+        
     except Exception as e:
-        st.session_state["chat_history"].append({"role": "model", "text": f"❌ Core Link Error: {str(e)}"})
+        st.session_state["chat_history"].append({"role": "assistant", "text": f"❌ Groq API Pipeline Error: {str(e)}"})
         
     st.rerun()

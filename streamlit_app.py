@@ -9,7 +9,7 @@ from fpdf import FPDF
 # Configure luxury full-width layout canvas
 st.set_page_config(page_title="Nexus", page_icon="✨", layout="centered")
 
-# Visual CSS styling to upgrade the interface UI to a luxury dark theme profile
+# Visual CSS styling to force the plus menu and mic inline inside the search capsule
 st.markdown("""
 <style>
 .stApp { background-color: #0d0e12; }
@@ -17,12 +17,12 @@ h1 { color: #f3f4f6 !important; font-family: 'Inter', sans-serif; text-align: ce
 .stDownloadButton>button { background-color: #10b981 !important; color: white !important; border-radius: 12px !important; font-weight: bold !important; height: 42px !important; border: none !important; width: 100% !important; }
 .stDownloadButton>button:hover { background-color: #059669 !important; }
 
-/* Styling the native chat input into an absolute flat, premium mobile capsule bar */
+/* HARD-FORCING EVERY CONTROL ONTO 1 SINGLE HORIZONTAL CHAT PILL LINE */
 .stChatInput {
     background-color: #1e202a !important;
     border-radius: 30px !important;
     border: 1px solid #2e3244 !important;
-    padding: 2px 4px 2px 45px !important; /* Left padding makes room for our button */
+    padding: 2px 45px 2px 50px !important; /* Left padding moves text right for Plus, right padding makes room for Mic */
     position: relative !important;
 }
 .stChatInput div { background-color: transparent !important; border: none !important; }
@@ -36,11 +36,11 @@ h1 { color: #f3f4f6 !important; font-family: 'Inter', sans-serif; text-align: ce
 }
 .stChatInput button:hover { background-color: #be654e !important; }
 
-/* THE CRITICAL DESIGN FIX: Moving the dropdown inside the search bar capsule */
+/* ABSOLUTE OVERLAY POSITIONING: Pinning the Plus Button INSIDE the search bar track */
 div[data-testid="stPopover"] {
     position: absolute !important;
-    left: 10px !important;
-    bottom: 8px !important;
+    left: 8px !important;
+    bottom: 6px !important;
     z-index: 999999 !important;
 }
 
@@ -60,6 +60,22 @@ div[data-testid="stPopover"] > button {
     justify-content: center !important;
     padding: 0 !important;
     padding-bottom: 3px !important;
+}
+
+/* ABSOLUTE OVERLAY POSITIONING: Pinning the Mic Button INSIDE the right side of the search bar track */
+.mic-wrapper-overlay {
+    position: absolute !important;
+    right: 52px !important;
+    bottom: 6px !important;
+    z-index: 999999 !important;
+}
+div[data-testid="stAudioInput"] { max-width: 36px !important; margin: 0 !important; padding: 0 !important; }
+div[data-testid="stAudioInput"] button { 
+    background-color: transparent !important; 
+    border: none !important; 
+    color: #9ca3af !important; 
+    height: 36px !important; 
+    width: 36px !important; 
 }
 </style>
 """, unsafe_allow_html=True)
@@ -113,14 +129,22 @@ else:
             
     if st.session_state["image_out"]: st.image(st.session_state["image_out"], use_container_width=True)
 
-    # Visual Plus Sign layout drawer triggers assets window
+    # 1. Built-in Popover asset drawer (Pinned to the inside left)
     with st.popover("+"):
         uploaded_image = st.file_uploader("📎 Upload Image to Analyze", type=["png", "jpg", "jpeg"])
-        audio_file = st.audio_input("🎤 Record Voice Input")
         generate_art_mode = st.checkbox("🎨 Paint AI Art Mode")
 
-    # Native chat_input instantly locks a perfect, flat text row capsule bar to the bottom of the screen
+    # 2. Built-in Mic Voice Input element overlay (Pinned to the inside right)
+    st.markdown('<div class="mic-wrapper-overlay">', unsafe_allow_html=True)
+    audio_file = st.audio_input("", label_visibility="collapsed")
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    # 3. Native chat_input instantly locks a perfect, flat text row capsule bar to the bottom of the screen
     user_input = st.chat_input("Nexus AI")
+
+    # If the user speaks a message without typing, route the voice stream
+    if audio_file and not user_input:
+        user_input = "Analyze and answer this voice message record request completely."
 
     # ==========================================
     # 🧠 BACKEND MULTITASKING ROUTER LOOPS
@@ -137,7 +161,6 @@ else:
         st.session_state["text_out"] = ""
         st.session_state["image_out"] = None
         
-        # LOCKED ENGINES: Keeping your explicit Gemini 3.5 Flash backend preference alive
         TEXT_MODEL = 'gemini-3.5-flash'
         ART_MODEL = 'imagen-3.0-generate-002'
 

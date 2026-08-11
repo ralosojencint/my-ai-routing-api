@@ -6,7 +6,7 @@ from google import genai
 from google.genai import types
 from fpdf import FPDF
 
-# Configure full-width layout canvas
+# Configure luxury full-width layout canvas
 st.set_page_config(page_title="Nexus", page_icon="✨", layout="centered")
 
 # Visual CSS styling to upgrade the interface UI to a luxury dark theme profile
@@ -94,9 +94,6 @@ else:
             pdf_holder.download_button(label="📥 Download Response as PDF Document", data=bytes(pdf_bytes), file_name="nexus_report.pdf", mime="application/pdf")
         except Exception: pass
 
-    # =========================================================================
-    # 📱 UNBREAKABLE CHAT INTERFACE
-    # =========================================================================
     # Premium utility asset drawer
     with st.popover("+ Add Assets & Modes"):
         uploaded_image = st.file_uploader("📎 Upload Image to Analyze", type=["png", "jpg", "jpeg"])
@@ -121,8 +118,8 @@ else:
         st.session_state["text_out"] = ""
         st.session_state["image_out"] = None
         
-        # FIXED MODEL STRINGS: Verified active enterprise identifiers
-        TEXT_MODEL = 'gemini-2.0-flash'
+        # LOCKED TO THE SPECIFIC GEMINI 3.5 FLASH STRING PARAMETER
+        TEXT_MODEL = 'gemini-3.5-flash'
         ART_MODEL = 'imagen-3.0-generate-002'
 
         if art_valid:

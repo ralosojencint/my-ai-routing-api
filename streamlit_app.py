@@ -6,13 +6,13 @@ from google.genai import types
 # Configure luxury full-width layout canvas
 st.set_page_config(page_title="Nexus", page_icon="✨", layout="centered")
 
-# Visual CSS overrides to force native layout components to stay locked on 1 horizontal row
+# Visual CSS layout overrides to force a true horizontal mobile pill bar container shape
 st.markdown("""
 <style>
 .stApp { background-color: #0d0e12; }
 h1 { color: #f3f4f6 !important; font-family: 'Inter', sans-serif; text-align: center; font-weight: 700; margin-top: 50px !important; margin-bottom: 25px !important;}
 
-/* FORCING NATIVE FORM GRID ONTO A SINGLE HORIZONTAL BOTTOM ROW CONTAINER */
+/* FORCING NATIVE CONTROLS ONTO 1 SINGLE HORIZONTAL PILL DOCK CAPSULE */
 form[data-testid="stForm"] {
     display: flex !important;
     flex-direction: row !important;
@@ -21,7 +21,7 @@ form[data-testid="stForm"] {
     background-color: #1e202a !important;
     border-radius: 35px !important;
     border: 1px solid #2e3244 !important;
-    padding: 4px 10px !important;
+    padding: 6px 12px !important;
     gap: 10px !important;
     width: 100% !important;
     position: fixed !important;
@@ -33,11 +33,11 @@ form[data-testid="stForm"] {
     box-shadow: 0 4px 20px rgba(0,0,0,0.5);
 }
 
-/* Ensuring all column components sit inline inside the main bar container matrix */
+/* Ensuring all internal sub-containers strip margins and sit inline flat */
 form[data-testid="stForm"] > div { width: auto !important; padding: 0 !important; margin: 0 !important; display: flex !important; align-items: center !important; }
 form[data-testid="stForm"] > div:nth-child(2) { flex-grow: 2 !important; width: 100% !important; }
 
-/* Stripping away standard margins around text inputs inside the capsule bar */
+/* Removing clunky borders around the text bar */
 div.stTextInput { width: 100% !important; padding: 0 !important; margin: 0 !important; }
 div.stTextInput > div > div > input {
     background-color: transparent !important;
@@ -50,7 +50,7 @@ div.stTextInput > div > div > input {
 }
 div.stTextInput > div > div { border: none !important; background-color: transparent !important; box-shadow: none !important; }
 
-/* Formatting file upload block into a clean circular grey plus icon button inside the bar */
+/* Turning the file upload block into a clean grey circular plus icon inside the bar */
 div[data-testid="stFileUploader"] { max-width: 38px !important; margin: 0 !important; padding: 0 !important; }
 div[data-testid="stFileUploaderDropzone"] { padding: 0 !important; background-color: transparent !important; border: none !important; }
 div[data-testid="stFileUploaderDropzone"] button {
@@ -68,7 +68,7 @@ div[data-testid="stFileUploaderDropzone"] button {
 }
 div[data-testid="stFileUploaderDropzone"] span, div[data-testid="stFileUploaderDropzone"] div { display: none !important; }
 
-/* Custom orange arrow submit capsule button format inside the right track of the bar */
+/* Custom orange arrow submit capsule button formatting inside the bar */
 form[data-testid="stForm"] button[type="submit"] {
     background-color: #d0755d !important;
     color: white !important;
@@ -104,7 +104,7 @@ st.title("✨ Nexus")
 if not st.session_state["is_premium"] and st.session_state["anonymous_clicks"] >= 3:
     st.error("🛑 Limit Reached. Upgrade to Premium for unlimited access.")
 else:
-    # DESIGN WORKSPACE MIDDLE OUTPUT VIEW CONTAINERS (Outputs render above the bottom row capsule)
+    # DESIGN WORKSPACE MIDDLE OUTPUT VIEW CONTAINERS
     out_holder = st.empty()
     if st.session_state["text_out"]:
         out_holder.markdown(f"### 📊 Outputs\n{st.session_state['text_out']}")
@@ -113,13 +113,8 @@ else:
     # 📱 THE COMPACT HORIZONTAL PILL BAR DOCK (Plus, Text Bar, Orange Button ALL COMPRESSED INLINE)
     # ========================================================================================
     with st.form(key="nexus_unbreakable_capsule_bar", clear_on_submit=False):
-        # Circular grey '+' button nested natively into the inside left track of the search bar container
         uploaded_image = st.file_uploader("+", type=["png", "jpg", "jpeg"], label_visibility="collapsed")
-        
-        # Core continuous unbordered text prompt entry field
         user_input = st.text_input("", placeholder="Nexus AI", label_visibility="collapsed")
-        
-        # Circular orange submit arrow button nested natively into the far right track of the search bar container
         execute_btn = st.form_submit_button(label="↑")
 
     generate_art_mode = st.checkbox("🎨 Paint AI Art Mode")
@@ -140,7 +135,6 @@ else:
             text_lower = user_input.lower().strip() if user_input else ""
             st.session_state["text_out"] = ""
             
-            # CORE MODEL LAYER LOCKED TO YOUR PRECISE FLAGSHIP BACKEND DIRECTION
             TEXT_MODEL = 'gemini-3.5-flash'
             ART_MODEL = 'imagen-3.0-generate-002'
 
@@ -155,7 +149,6 @@ else:
                 if len(numbers) >= 2: st.session_state["text_out"] = f"💡 Programmatic Compute:\n{numbers} + {numbers} = {numbers + numbers}"
             else:
                 try:
-                    # NATIVE MULTIMODAL EXTRACTION: Links text prompts and raw image data files cleanly with no network faults
                     if u_valid:
                         image_bytes = uploaded_image.read()
                         prompt_to_use = user_input if user_input else "Describe this image asset in deep detail."

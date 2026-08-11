@@ -1,6 +1,5 @@
 import streamlit as st
-import urllib.request
-import json
+import urllib.request, json
 from bs4 import BeautifulSoup
 from google import genai
 from google.genai import types
@@ -11,61 +10,19 @@ st.set_page_config(page_title="Nexus", page_icon="✨", layout="centered")
 st.markdown("""
 <style>
 .stApp { background-color: #0d0e12; }
-h1 { color: #f3f4f6 !important; font-family: 'Inter', sans-serif; text-align: center; font-weight: 700; margin-top: 50px !important; margin-bottom: 25px !important;}
+h1 { color: #f3f4f6 !important; font-family: 'Inter', sans-serif; text-align: center; font-weight: 700; margin-top: 40px !important; margin-bottom: 25px !important;}
 .stDownloadButton>button { background-color: #10b981 !important; color: white !important; border-radius: 12px !important; font-weight: bold !important; height: 42px !important; border: none !important; width: 100% !important; }
-.stDownloadButton>button:hover { background-color: #059669 !important; }
-
-/* HARD-FORCING EVERY CONTROL ONTO ONE SINGLE HORIZONTAL LINE */
 [data-testid="stHorizontalBlock"] {
-    display: flex !important;
-    flex-direction: row !important;
-    flex-wrap: nowrap !important;
-    align-items: center !important;
-    background-color: #1e202a !important;
-    border-radius: 30px !important;
-    border: 1px solid #2e3244 !important;
-    padding: 4px 10px !important;
-    gap: 6px !important;
-    width: 100% !important;
+    display: flex !important; flex-direction: row !important; flex-wrap: nowrap !important; align-items: center !important;
+    background-color: #1e202a !important; border-radius: 30px !important; border: 1px solid #2e3244 !important; padding: 4px 14px !important; gap: 8px !important; width: 100% !important;
+    position: fixed !important; bottom: 20px !important; left: 50% !important; transform: translateX(-50%) !important; max-width: 90% !important; z-index: 99999 !important;
 }
-
 [data-testid="stHorizontalBlock"] > div { width: auto !important; padding: 0 !important; margin: 0 !important; }
 [data-testid="stHorizontalBlock"] > div:nth-child(2) { flex-grow: 2 !important; width: 100% !important; }
-
-/* Styling the popover to look like a clean grey circle plus button */
-div[data-testid="stPopover"] > button {
-    background-color: #2e3244 !important;
-    color: white !important;
-    border: none !important;
-    border-radius: 50% !important;
-    height: 38px !important;
-    width: 38px !important;
-    min-width: 38px !important;
-    font-size: 20px !important;
-    font-weight: bold;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-}
-
+div[data-testid="stPopover"] > button { background-color: #2e3244 !important; color: white !important; border: none !important; border-radius: 50% !important; height: 38px !important; width: 38px !important; min-width: 38px !important; font-size: 20px !important; font-weight: bold; display: flex !important; align-items: center !important; justify-content: center !important; }
 div.stTextInput > div > div > input { background-color: transparent !important; color: white !important; border: none !important; padding-left: 2px !important; height: 38px !important; font-size: 14px !important; }
 div.stTextInput > div > div { border: none !important; background-color: transparent !important; box-shadow: none !important; }
-
-/* Styling the orange circular send arrow capsule */
-.send-btn-box button {
-    background-color: #d0755d !important;
-    color: white !important;
-    border-radius: 50% !important;
-    height: 38px !important;
-    width: 38px !important;
-    min-width: 38px !important;
-    border: none !important;
-    font-size: 16px !important;
-    font-weight: bold !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-}
+.send-btn-box button { background-color: #d0755d !important; color: white !important; border-radius: 50% !important; height: 38px !important; width: 38px !important; min-width: 38px !important; border: none !important; font-size: 16px !important; font-weight: bold !important; display: flex !important; align-items: center !important; justify-content: center !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -116,34 +73,25 @@ else:
             
     if st.session_state["image_out"]: art_holder.image(st.session_state["image_out"], use_container_width=True)
 
-    st.markdown("<br><br>", unsafe_allow_html=True)
-
-    # FIXED LINE HERE: We passed exact horizontal proportions to satisfy Streamlit's engine
-    bar_cols = st.columns([1, 4, 1])
-    
-    with bar_cols[0]:
+    bar_cols = st.columns(3)
+    with bar_cols:
         with st.popover("+"):
             uploaded_image = st.file_uploader("📎 Upload Image to Analyze", type=["png", "jpg", "jpeg"])
             audio_file = st.audio_input("🎤 Record Voice Input")
             generate_art_mode = st.checkbox("🎨 Paint AI Art Mode")
-        
-    with bar_cols[1]:
+    with bar_cols:
         user_input = st.text_input("", placeholder="Nexus AI", label_visibility="collapsed")
-        
-    with bar_cols[2]:
+    with bar_cols:
         st.markdown('<div class="send-btn-box">', unsafe_allow_html=True)
         execute_btn = st.button("↑")
         st.markdown('</div>', unsafe_allow_html=True)
 
-    # ==========================================
-    # 🧠 BACKEND MULTITASKING ROUTER LOOPS
-    # ==========================================
     if execute_btn:
-        uploaded_image_valid = 'uploaded_image' in locals() and uploaded_image is not None
-        audio_file_valid = 'audio_file' in locals() and audio_file is not None
-        generate_art_mode_valid = 'generate_art_mode' in locals() and generate_art_mode
+        u_valid = 'uploaded_image' in locals() and uploaded_image is not None
+        a_valid = 'audio_file' in locals() and audio_file is not None
+        art_valid = 'generate_art_mode' in locals() and generate_art_mode
         
-        if not user_input and not uploaded_image_valid and not audio_file_valid:
+        if not user_input and not u_valid and not a_valid:
             st.warning("⚠️ Please provide an instruction text string or choose a file asset link to execute.")
         else:
             if not st.session_state["is_premium"]: st.session_state["anonymous_clicks"] += 1
@@ -153,10 +101,11 @@ else:
             st.session_state["text_out"] = ""
             st.session_state["image_out"] = None
             
-            TEXT_MODEL = 'gemini-2.0-flash'
+            # FIXED KEY ENGINES: Permanently locking in Gemini 3.5 Flash Flagship
+            TEXT_MODEL = 'gemini-3.5-flash'
             ART_MODEL = 'imagen-3.0-generate-002'
 
-            if generate_art_mode_valid and user_input:
+            if art_valid and user_input:
                 try:
                     result = client.models.generate_images(model=ART_MODEL, prompt=user_input, config=dict(number_of_images=1, output_mime_type="image/jpeg"))
                     for g_img in result.generated_images: st.session_state["image_out"] = g_img.image.image_bytes
@@ -179,11 +128,11 @@ else:
                 else: st.session_state["text_out"] = "❌ Link Error: Missing valid http prefix link target."
             else:
                 try:
-                    if uploaded_image_valid:
+                    if u_valid:
                         image_bytes = uploaded_image.read()
                         prompt_to_use = user_input if user_input else "Describe this image asset in deep detail."
                         response = client.models.generate_content(model=TEXT_MODEL, contents=[types.Part.from_bytes(data=image_bytes, mime_type=uploaded_image.type), prompt_to_use])
-                    elif audio_file_valid:
+                    elif a_valid:
                         audio_bytes = audio_file.read()
                         response = client.models.generate_content(model=TEXT_MODEL, contents=[types.Part.from_bytes(data=audio_bytes, mime_type="audio/wav"), "Transcribe and answer this audio message."])
                     else:

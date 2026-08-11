@@ -10,10 +10,8 @@ st.set_page_config(
 )
 
 # ============================================================
-# NEXUS — RESEARCH ENGINE
+# SETTINGS
 # ============================================================
-
-# ---------- SECRETS ----------
 
 def secret(name):
     try:
@@ -24,14 +22,20 @@ def secret(name):
         pass
     return os.getenv(name, "")
 
+
 GROQ_API_KEY = secret("GROQ_API_KEY")
 TAVILY_API_KEY = secret("TAVILY_API_KEY")
 
 
-# ---------- SESSION ----------
+# ============================================================
+# MEMORY
+# ============================================================
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
+
+if "mode" not in st.session_state:
+    st.session_state.mode = "Quick"
 
 
 # ============================================================
@@ -41,11 +45,6 @@ if "messages" not in st.session_state:
 st.markdown("""
 <style>
 
-html, body, [class*="css"] {
-    font-family: -apple-system, BlinkMacSystemFont,
-    "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-}
-
 .stApp {
     background: #0b0b0d;
     color: #eeeeef;
@@ -53,103 +52,84 @@ html, body, [class*="css"] {
 
 .block-container {
     max-width: 780px;
-    padding-top: 55px;
+    padding-top: 45px;
     padding-bottom: 120px;
 }
 
-/* Remove Streamlit decoration */
-
-header {
-    background: transparent !important;
-}
-
-[data-testid="stHeader"] {
-    background: transparent !important;
-}
-
-/* Logo */
-
-.nexus-brand {
-    text-align: center;
-    margin-bottom: 8px;
-}
-
 .nexus-name {
-    font-size: 32px;
+    text-align: center;
+    font-size: 34px;
     font-weight: 700;
     letter-spacing: 8px;
-    color: #f5f5f5;
+    color: #f4f4f5;
 }
 
 .nexus-line {
-    width: 28px;
+    width: 25px;
     height: 2px;
     background: #eeeeee;
-    margin: 13px auto 0 auto;
-    opacity: .7;
+    margin: 12px auto;
 }
 
-.nexus-description {
+.nexus-sub {
     text-align: center;
-    color: #77777d;
+    color: #707078;
     font-size: 13px;
-    margin-top: 13px;
-    margin-bottom: 45px;
+    margin-bottom: 35px;
 }
 
-/* Custom chat */
+.mode-title {
+    text-align: center;
+    color: #77777e;
+    font-size: 11px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+}
 
 .user-message {
     display: flex;
     justify-content: flex-end;
-    margin: 20px 0;
+    margin: 22px 0;
 }
 
 .user-bubble {
     max-width: 78%;
-    background: #1c1c20;
+    background: #19191d;
     border: 1px solid #29292e;
     border-radius: 18px 18px 5px 18px;
     padding: 12px 16px;
-    color: #eeeeef;
     line-height: 1.55;
 }
 
 .ai-message {
-    margin: 25px 0 35px 0;
+    margin: 25px 0 35px;
 }
 
 .ai-label {
-    color: #88888f;
+    color: #77777e;
     font-size: 11px;
     letter-spacing: 1.5px;
-    text-transform: uppercase;
-    margin-bottom: 9px;
+    margin-bottom: 8px;
 }
 
 .ai-content {
     color: #eeeeef;
     line-height: 1.7;
-    font-size: 15px;
 }
 
-/* Research status */
-
 .research-status {
-    color: #85858b;
+    color: #77777e;
     font-size: 13px;
     margin: 15px 0;
 }
 
-/* Sources */
-
 .sources-title {
-    color: #77777d;
+    color: #77777e;
     font-size: 11px;
     letter-spacing: 1.5px;
     text-transform: uppercase;
-    margin-top: 24px;
-    margin-bottom: 10px;
+    margin-top: 25px;
 }
 
 .source {
@@ -158,7 +138,7 @@ header {
 }
 
 .source-number {
-    color: #55555b;
+    color: #505057;
     font-size: 11px;
 }
 
@@ -169,17 +149,11 @@ header {
 }
 
 .source-url {
-    color: #66666c;
+    color: #66666d;
     font-size: 11px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-}
-
-/* Bottom input */
-
-[data-testid="stChatInput"] {
-    background: transparent;
 }
 
 [data-testid="stChatInput"] textarea {
@@ -188,13 +162,6 @@ header {
     border-radius: 18px !important;
     color: #eeeeef !important;
 }
-
-[data-testid="stChatInput"] textarea:focus {
-    border-color: #55555c !important;
-    box-shadow: none !important;
-}
-
-/* Sidebar */
 
 [data-testid="stSidebar"] {
     background: #0e0e10;
@@ -209,16 +176,41 @@ header {
 # HEADER
 # ============================================================
 
-st.markdown("""
-<div class="nexus-brand">
-    <div class="nexus-name">NEXUS</div>
-    <div class="nexus-line"></div>
-</div>
+st.markdown(
+    '<div class="nexus-name">NEXUS</div>',
+    unsafe_allow_html=True
+)
 
-<div class="nexus-description">
-    Research first. Answer second.
-</div>
-""", unsafe_allow_html=True)
+st.markdown(
+    '<div class="nexus-line"></div>',
+    unsafe_allow_html=True
+)
+
+st.markdown(
+    '<div class="nexus-sub">'
+    'Research first. Answer second.'
+    '</div>',
+    unsafe_allow_html=True
+)
+
+
+# ============================================================
+# MODE
+# ============================================================
+
+st.markdown(
+    '<div class="mode-title">Research depth</div>',
+    unsafe_allow_html=True
+)
+
+mode = st.radio(
+    "",
+    ["Quick", "Deep Research"],
+    horizontal=True,
+    label_visibility="collapsed"
+)
+
+st.session_state.mode = mode
 
 
 # ============================================================
@@ -229,19 +221,16 @@ with st.sidebar:
 
     st.markdown("### NEXUS")
 
-    st.caption("Research-first intelligence")
+    st.caption(
+        "Research-first intelligence"
+    )
 
     st.divider()
 
-    mode = st.selectbox(
-        "Mode",
-        [
-            "General",
-            "Coding",
-            "Business",
-            "Research",
-            "Writing"
-        ]
+    st.markdown("**Current mode**")
+
+    st.write(
+        st.session_state.mode
     )
 
     st.divider()
@@ -250,20 +239,24 @@ with st.sidebar:
         "New conversation",
         use_container_width=True
     ):
+
         st.session_state.messages = []
+
         st.rerun()
 
 
 # ============================================================
-# WEB SEARCH
+# SEARCH
 # ============================================================
 
-def search_web(query):
+def search_web(query, deep=False):
 
     if not TAVILY_API_KEY:
         return [], "TAVILY_API_KEY is missing."
 
     try:
+
+        max_results = 5 if not deep else 8
 
         response = requests.post(
 
@@ -272,14 +265,15 @@ def search_web(query):
             json={
                 "api_key": TAVILY_API_KEY,
                 "query": query,
-                "search_depth": "basic",
+                "search_depth":
+                    "advanced" if deep else "basic",
                 "topic": "general",
-                "max_results": 5,
+                "max_results": max_results,
                 "include_answer": False,
                 "include_raw_content": False
             },
 
-            timeout=30
+            timeout=35
         )
 
         if response.status_code != 200:
@@ -289,21 +283,27 @@ def search_web(query):
 
         results = []
 
-        for item in data.get("results", [])[:5]:
+        for item in data.get("results", []):
 
             results.append({
-                "title": item.get(
-                    "title",
-                    "Untitled"
-                ),
-                "url": item.get(
-                    "url",
-                    ""
-                ),
-                "content": item.get(
-                    "content",
-                    ""
-                )[:1400]
+
+                "title":
+                    item.get(
+                        "title",
+                        "Untitled"
+                    ),
+
+                "url":
+                    item.get(
+                        "url",
+                        ""
+                    ),
+
+                "content":
+                    item.get(
+                        "content",
+                        ""
+                    )[:1100]
             })
 
         return results, None
@@ -314,87 +314,175 @@ def search_web(query):
 
 
 # ============================================================
-# GROQ
+# CREATE EXTRA SEARCHES
 # ============================================================
 
-def ask_groq(question, research, history):
+def make_search_queries(question):
+
+    if not GROQ_API_KEY:
+
+        return [question]
+
+    prompt = f"""
+Create 3 short web-search queries for this question:
+
+{question}
+
+Return ONLY the 3 queries.
+One query per line.
+No numbering.
+"""
+
+    try:
+
+        response = requests.post(
+
+            "https://api.groq.com/openai/v1/chat/completions",
+
+            headers={
+                "Authorization":
+                    "Bearer " + GROQ_API_KEY,
+                "Content-Type":
+                    "application/json"
+            },
+
+            json={
+
+                "model":
+                    "llama-3.3-70b-versatile",
+
+                "messages": [
+                    {
+                        "role":
+                            "user",
+                        "content":
+                            prompt
+                    }
+                ],
+
+                "temperature":
+                    0.2,
+
+                "max_completion_tokens":
+                    200
+            },
+
+            timeout=30
+        )
+
+        if response.status_code != 200:
+            return [question]
+
+        text = response.json()[
+            "choices"
+        ][0][
+            "message"
+        ][
+            "content"
+        ]
+
+        queries = [
+            q.strip()
+            for q in text.splitlines()
+            if q.strip()
+        ]
+
+        return queries[:3] or [question]
+
+    except Exception:
+        return [question]
+
+
+# ============================================================
+# ANSWER
+# ============================================================
+
+def generate_answer(
+    question,
+    sources,
+    history,
+    deep
+):
 
     if not GROQ_API_KEY:
 
         return (
-            "Your Groq API key is missing. "
-            "Add `GROQ_API_KEY` to Streamlit Secrets."
+            "GROQ_API_KEY is missing."
         )
 
-    # IMPORTANT:
-    # Keep the request small so we don't hit 413.
+    evidence = ""
 
-    source_text = ""
+    # Keep payload deliberately small.
+
+    limit = 5 if not deep else 8
 
     for i, source in enumerate(
-        research[:5],
+        sources[:limit],
         start=1
     ):
 
-        source_text += f"""
+        evidence += f"""
 
 SOURCE {i}
 Title: {source["title"]}
 URL: {source["url"]}
-Evidence:
-{source["content"][:1200]}
+Evidence: {source["content"][:900]}
+
 """
 
 
-    recent_history = ""
+    conversation = ""
 
-    for item in history[-4:]:
+    for item in history[-3:]:
 
-        recent_history += (
+        conversation += (
             f'\n{item["role"]}: '
-            f'{item["content"][:700]}'
+            f'{item["content"][:500]}'
         )
+
+
+    research_level = (
+        "DEEP RESEARCH"
+        if deep
+        else "QUICK RESEARCH"
+    )
 
 
     prompt = f"""
 You are NEXUS.
 
-You are a research-first AI assistant.
+Research level: {research_level}
 
-USER QUESTION:
+User question:
 {question}
 
-WEB EVIDENCE:
-{source_text}
+Web evidence:
+{evidence}
 
-RECENT CONVERSATION:
-{recent_history}
+Recent conversation:
+{conversation}
 
-Answer using the evidence above.
+Answer using the evidence.
 
 Rules:
 
 - Do not invent facts.
-- Prefer claims supported by multiple sources.
-- If sources disagree, say so.
-- If evidence is weak, say so.
-- Use [1], [2], etc. for source references.
-- Be concise but useful.
-- Current information should be based on the supplied web evidence.
+- Cite important claims as [1], [2], etc.
+- Prefer multiple supporting sources.
+- Mention disagreements between sources.
+- Consider source quality and recency.
+- If evidence is insufficient, say so.
+- Never pretend you searched something you did not search.
 
 PERSONALITY:
 
-NEXUS is intelligent, calm, direct and slightly funny.
+Smart, calm, direct and slightly funny.
 
-Humor is occasional and natural.
+Humor should be natural and occasional.
 
-Never force jokes.
+Never use cringe AI language.
 
-Never use cringe AI/robot language.
-
-A little dry humor is okay when appropriate.
-
-Mode: {mode}
+Accuracy comes before humor.
 """
 
 
@@ -407,12 +495,12 @@ Mode: {mode}
             headers={
                 "Authorization":
                     "Bearer " + GROQ_API_KEY,
-
                 "Content-Type":
                     "application/json"
             },
 
             json={
+
                 "model":
                     "llama-3.3-70b-versatile",
 
@@ -420,38 +508,34 @@ Mode: {mode}
                     {
                         "role":
                             "system",
-
                         "content":
                             "You are NEXUS."
                     },
                     {
                         "role":
                             "user",
-
                         "content":
                             prompt
                     }
                 ],
 
                 "temperature":
-                    0.45,
+                    0.4,
 
                 "max_completion_tokens":
-                    1800
+                    2200
             },
 
             timeout=90
         )
 
-
         if response.status_code == 413:
 
             return (
-                "The research request was too large. "
-                "I trimmed the sources, but Groq still "
-                "rejected it. We can reduce it further."
+                "The research package was too large. "
+                "NEXUS needs to trim the evidence "
+                "before asking the AI."
             )
-
 
         if response.status_code != 200:
 
@@ -460,10 +544,7 @@ Mode: {mode}
                 + response.text
             )
 
-
-        data = response.json()
-
-        return data[
+        return response.json()[
             "choices"
         ][0][
             "message"
@@ -471,17 +552,19 @@ Mode: {mode}
             "content"
         ]
 
-
     except Exception as e:
 
-        return f"NEXUS AI error: {e}"
+        return (
+            "NEXUS AI error: "
+            + str(e)
+        )
 
 
 # ============================================================
-# RENDER SOURCES
+# SOURCES
 # ============================================================
 
-def render_sources(sources):
+def show_sources(sources):
 
     if not sources:
         return
@@ -530,7 +613,7 @@ style="color:#dddddf;text-decoration:none;">
 
 
 # ============================================================
-# RENDER OLD MESSAGES
+# OLD MESSAGES
 # ============================================================
 
 for message in st.session_state.messages:
@@ -556,8 +639,6 @@ for message in st.session_state.messages:
 
     else:
 
-        content = message["content"]
-
         st.markdown(
             '<div class="ai-message">'
             '<div class="ai-label">NEXUS</div>'
@@ -566,15 +647,15 @@ for message in st.session_state.messages:
         )
 
         st.markdown(
-            content
+            message["content"]
         )
 
         st.markdown(
-            "</div></div>",
+            '</div></div>',
             unsafe_allow_html=True
         )
 
-        render_sources(
+        show_sources(
             message.get(
                 "sources",
                 []
@@ -583,7 +664,7 @@ for message in st.session_state.messages:
 
 
 # ============================================================
-# BOTTOM CHAT
+# CHAT INPUT
 # ============================================================
 
 question = st.chat_input(
@@ -592,8 +673,6 @@ question = st.chat_input(
 
 
 if question:
-
-    # USER
 
     st.session_state.messages.append({
 
@@ -609,7 +688,6 @@ if question:
         question
     )
 
-
     st.markdown(
         f"""
 <div class="user-message">
@@ -624,9 +702,39 @@ if question:
     )
 
 
-    # SEARCH
+    deep = (
+        st.session_state.mode
+        == "Deep Research"
+    )
+
+
+    # --------------------------------------------------------
+    # STATUS
+    # --------------------------------------------------------
 
     status = st.empty()
+
+    if deep:
+
+        status.markdown(
+            '<div class="research-status">'
+            'Planning research…'
+            '</div>',
+            unsafe_allow_html=True
+        )
+
+        queries = make_search_queries(
+            question
+        )
+
+    else:
+
+        queries = [question]
+
+
+    # --------------------------------------------------------
+    # SEARCH
+    # --------------------------------------------------------
 
     status.markdown(
         '<div class="research-status">'
@@ -636,101 +744,110 @@ if question:
     )
 
 
-    sources, search_error = search_web(
-        question
+    all_sources = []
+
+    seen_urls = set()
+
+
+    for query in queries:
+
+        results, error = search_web(
+            query,
+            deep
+        )
+
+        if error:
+            continue
+
+        for result in results:
+
+            url = result["url"]
+
+            if url and url not in seen_urls:
+
+                seen_urls.add(url)
+
+                all_sources.append(
+                    result
+                )
+
+
+    # Deep mode keeps more sources.
+
+    max_sources = (
+        8 if deep else 5
+    )
+
+    all_sources = all_sources[
+        :max_sources
+    ]
+
+
+    # --------------------------------------------------------
+    # ANALYSIS
+    # --------------------------------------------------------
+
+    status.markdown(
+        '<div class="research-status">'
+        'Comparing sources…'
+        '</div>',
+        unsafe_allow_html=True
     )
 
 
-    if search_error:
+    answer = generate_answer(
 
-        status.empty()
+        question,
 
-        answer = (
-            "I couldn't complete the web search.\n\n"
-            + search_error
-        )
+        all_sources,
 
-        st.markdown(
-            '<div class="ai-message">'
-            '<div class="ai-label">NEXUS</div>'
-            '<div class="ai-content">',
-            unsafe_allow_html=True
-        )
+        st.session_state.messages,
 
-        st.markdown(answer)
-
-        st.markdown(
-            "</div></div>",
-            unsafe_allow_html=True
-        )
-
-        st.session_state.messages.append({
-
-            "role":
-                "assistant",
-
-            "content":
-                answer,
-
-            "sources":
-                []
-        })
-
-    else:
-
-        status.markdown(
-            '<div class="research-status">'
-            'Checking sources…'
-            '</div>',
-            unsafe_allow_html=True
-        )
+        deep
+    )
 
 
-        # ASK AI
-
-        answer = ask_groq(
-
-            question,
-
-            sources,
-
-            st.session_state.messages
-        )
+    status.empty()
 
 
-        status.empty()
+    # --------------------------------------------------------
+    # ANSWER
+    # --------------------------------------------------------
+
+    st.markdown(
+        '<div class="ai-message">'
+        '<div class="ai-label">NEXUS</div>'
+        '<div class="ai-content">',
+        unsafe_allow_html=True
+    )
+
+    st.markdown(
+        answer
+    )
+
+    st.markdown(
+        '</div></div>',
+        unsafe_allow_html=True
+    )
 
 
-        st.markdown(
-            '<div class="ai-message">'
-            '<div class="ai-label">NEXUS</div>'
-            '<div class="ai-content">',
-            unsafe_allow_html=True
-        )
-
-        st.markdown(answer)
-
-        st.markdown(
-            "</div></div>",
-            unsafe_allow_html=True
-        )
+    show_sources(
+        all_sources
+    )
 
 
-        render_sources(
-            sources
-        )
+    # --------------------------------------------------------
+    # SAVE
+    # --------------------------------------------------------
 
+    st.session_state.messages.append({
 
-        # SAVE
+        "role":
+            "assistant",
 
-        st.session_state.messages.append({
+        "content":
+            answer,
 
-            "role":
-                "assistant",
-
-            "content":
-                answer,
-
-            "sources":
-                sources
-        })
+        "sources":
+            all_sources
+    })

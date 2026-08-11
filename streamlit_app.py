@@ -10,7 +10,7 @@ st.markdown("""
 <style>
 .stApp { background-color: #0d0e12; }
 h1 { color: #f3f4f6 !important; font-family: 'Inter', sans-serif; text-align: center; font-weight: 700; margin-top: 40px !important;}
-div[data-testid="stTextInput"], div[data-testid="stCheckbox"] { display: none !important; }
+div[data-testid="stTextInput"], div[data-testid="stCheckbox"], div[data-testid="stFileUploader"] { display: none !important; }
 
 /* Fixed layout box: Keeps the horizontal capsule bar locked to the absolute bottom of the phone screen */
 iframe {
@@ -48,12 +48,15 @@ else:
     if st.session_state["text_out"]:
         out_holder.markdown(f"### 📊 Outputs\n{st.session_state['text_out']}")
 
-    # THE EXACT CHAT DOCK INTERFACE LAYER (Plus, Text Track, Orange Button COMPRESSED INLINE - MIC REMOVED)
+    # REAL BRIDGED HARDWARE SELECTOR HOOKS (Ensuring absolute text string syncing parameters)
+    uploaded_image = st.file_uploader("+", type=["png", "jpg", "jpeg"], key="native_image_uploader")
+
+    # THE EXACT CHAT DOCK INTERFACE LAYER (Plus button triggers native camera roll picker)
     chat_bar_html = f"""
     <div style="background-color:#0d0e12; padding:10px; font-family:sans-serif; width:100%; box-sizing:border-box;">
         <form id="cf" style="display:flex; align-items:center; background-color:#1e202a; border-radius:28px; border:1px solid #2e3244; padding:6px 12px; gap:10px; max-width:500px; margin:0 auto;">
-            <button type="button" onclick="document.getElementById('if').click()" style="background-color:#2e3244; color:white; border:none; border-radius:50%; width:36px; height:36px; font-size:20px; font-weight:bold; cursor:pointer;">+</button>
-            <input type="file" id="if" style="display:none;" onchange="alert('Image selected!')">
+            <!-- Clicking this custom Plus circle button directly opens the phone camera gallery file uploader -->
+            <button type="button" onclick="window.parent.document.querySelector('div[data-testid=\\'stFileUploader\\'] button').click()" style="background-color:#2e3244; color:white; border:none; border-radius:50%; width:36px; height:36px; font-size:20px; font-weight:bold; cursor:pointer; outline:none;">+</button>
             
             <input type="text" id="pi" value="{user_input if user_input else ''}" placeholder="Nexus AI" style="background-color:transparent; color:white; border:none; width:100%; height:36px; font-size:15px; outline:none;">
             
@@ -64,9 +67,9 @@ else:
     document.getElementById('cf').addEventListener('submit', function(e) {{
         e.preventDefault();
         const val = document.getElementById('pi').value.trim();
-        if(val) {{
+        if(val || window.parent.document.querySelector('div[data-testid="stFileUploader"] ul')) {{
             const url = new URL(window.parent.location.href);
-            url.searchParams.set("q", val);
+            url.searchParams.set("q", val || "Analyze uploaded image file");
             window.parent.location.href = url.toString();
         }}
     }});
@@ -94,7 +97,13 @@ else:
             if len(numbers) >= 2: st.session_state["text_out"] = f"💡 Result: {numbers} + {numbers} = {numbers + numbers}"
         else:
             try:
-                response = client.models.generate_content(model=TEXT_MODEL, contents=user_input)
+                # NATIVE MULTIMODAL EXTRACTION Core links text prompt and raw uploaded image data simultaneously
+                if uploaded_image:
+                    image_bytes = uploaded_image.read()
+                    prompt_to_use = user_input if user_input and user_input != "Analyze uploaded image file" else "Describe this image asset in deep detail."
+                    response = client.models.generate_content(model=TEXT_MODEL, contents=[types.Part.from_bytes(data=image_bytes, mime_type=uploaded_image.type), prompt_to_use])
+                else:
+                    response = client.models.generate_content(model=TEXT_MODEL, contents=user_input)
                 st.session_state["text_out"] = response.text
             except Exception as e: st.session_state["text_out"] = f"❌ Error: {str(e)}"
         st.rerun()

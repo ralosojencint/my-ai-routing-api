@@ -1,8 +1,2 @@
-fpdf2
 streamlit
-google-genai
-beautifulsoup4
-streamlit-authenticator
-fastapi
-uvicorn
-pydantic
+requests

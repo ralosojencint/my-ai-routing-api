@@ -5,57 +5,78 @@ from bs4 import BeautifulSoup
 from google import genai
 from google.genai import types
 
-# Modern luxury layout setup
 st.set_page_config(page_title="Nexus", page_icon="✨", layout="centered")
 
-# Executive UI Customization Layer to enforce a true single-row chat layout
+# Visual CSS styling to force an absolute compact ChatGPT/Claude mobile bar
 st.markdown("""
     <style>
     .stApp { background-color: #0d0e12; }
-    h1, h3 { color: #f3f4f6 !important; font-family: 'Inter', sans-serif; text-align: center; font-weight: 700; }
+    h1, h3 { color: #f3f4f6 !important; font-family: 'Inter', sans-serif; text-align: center; font-weight: 700; margin-bottom: 2px !important;}
     
-    /* Creating a true horizontal flex bar container for the input elements */
-    [data-testid="stHorizontalBlock"] {
-        background-color: #1e202a !important;
-        border-radius: 30px !important;
-        border: 1px solid #2e3244 !important;
-        padding: 6px 12px !important;
+    /* Strict Horizontal Flex Layout to snap all controls onto 1 flat line */
+    .chat-container-dock {
         display: flex !important;
         align-items: center !important;
-        justify-content: space-between !important;
+        background-color: #1e202a !important;
+        border-radius: 28px !important;
+        border: 1px solid #2e3244 !important;
+        padding: 4px 8px !important;
+        width: 100% !important;
+        gap: 6px !important;
     }
     
-    /* Clean unbordered formatting for input within the container capsule */
+    /* Shrinking default form paddings to prevent vertical line breaking stretching */
+    div.stTextInput { width: 100% !important; padding: 0 !important; margin: 0 !important; }
     div.stTextInput > div > div > input {
         background-color: transparent !important;
         color: #ffffff !important;
         border: none !important;
-        padding-left: 10px !important;
-        height: 44px !important;
+        padding-left: 4px !important;
+        height: 38px !important;
+        font-size: 14px !important;
     }
     div.stTextInput > div > div { border: none !important; background-color: transparent !important; }
     
-    /* Transforming the action button into a neat circular chat icon trigger */
-    .stButton>button {
-        background-color: #2563eb !important;
+    /* Compact Circular Plus Upload Button Formatting */
+    div[data-testid="stFileUploader"] { width: auto !important; max-width: 42px !important; margin: 0 !important; padding: 0 !important; }
+    div[data-testid="stFileUploaderDropzone"] { padding: 0 !important; background-color: transparent !important; border: none !important; }
+    div[data-testid="stFileUploaderDropzone"] button { 
+        background-color: #2e3244 !important; 
+        color: #ffffff !important; 
+        border-radius: 50% !important; 
+        height: 36px !important; 
+        width: 36px !important; 
+        min-width: 36px !important; 
+        font-size: 18px !important;
+        font-weight: bold !important;
+        padding: 0 !important;
+        border: none !important;
+    }
+    div[data-testid="stFileUploaderDropzone"] button::after { content: "" !important; }
+    div[data-testid="stFileUploaderDropzone"] span { display: none !important; }
+    
+    /* Custom Orange Arrow Send Button Structure */
+    .send-btn-box button {
+        background-color: #d0755d !important;
         color: white !important;
         border-radius: 50% !important;
-        font-weight: bold !important;
-        height: 44px !important;
-        width: 44px !important;
-        min-width: 44px !important;
+        height: 36px !important;
+        width: 36px !important;
+        min-width: 36px !important;
         border: none !important;
-        padding: 0 !important;
+        font-size: 18px !important;
+        font-weight: bold !important;
         display: flex !important;
         align-items: center !important;
         justify-content: center !important;
+        padding: 0 !important;
+        margin: 0 !important;
     }
-    .stButton>button:hover { background-color: #1d4ed8 !important; }
+    .send-btn-box button:hover { background-color: #be654e !important; }
     
-    /* Minimizing the file uploader widget to look like a small upload paperclip */
-    div[data-testid="stFileUploader"] { margin-top: 0px !important; padding: 0 !important; }
-    div[data-testid="stFileUploaderDropzone"] { padding: 4px !important; background-color: transparent !important; border: none !important; }
-    div[data-testid="stFileUploaderDropzone"] button { background-color: #2e3244 !important; color: white !important; border-radius: 20px !important; height: 36px !important; font-size: 12px !important; }
+    /* Audio controller placement tracks */
+    div[data-testid="stAudioInput"] { width: auto !important; max-width: 42px !important; margin: 0 !important; padding: 0 !important; }
+    div[data-testid="stAudioInput"] button { background-color: #2e3244 !important; border-radius: 50% !important; height: 36px !important; width: 36px !important; border: none !important; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -87,7 +108,6 @@ with st.sidebar:
             st.session_state["image_out"] = None
             st.rerun()
 
-# BRAND UPGRADE: PREMIUM WORD AND SUBTITLE TEXT ARE ENTIRELY REMOVED
 st.title("✨ Nexus")
 
 if not st.session_state["is_premium"] and st.session_state["anonymous_clicks"] >= FREE_DAILY_LIMIT:
@@ -95,10 +115,8 @@ if not st.session_state["is_premium"] and st.session_state["anonymous_clicks"] >
     st.info("💡 Upgrade to Premium membership (\$9.99/month) to unlock unlimited data pipelines instantly.")
     st.markdown("[👉 Click Here to Unlock Unlimited Access](https://lemonsqueezy.com)")
 else:
-    st.markdown("<br>", unsafe_allow_html=True)
-
     # =============================================================
-    # 🎯 THE MIDDLE OUTPUT WINDOWS
+    # 🎯 THE MIDDLE OUTPUT LAYER
     # =============================================================
     output_holder = st.empty()
     art_holder = st.empty()
@@ -108,36 +126,46 @@ else:
     if st.session_state["image_out"]:
         art_holder.image(st.session_state["image_out"], use_container_width=True)
 
-    st.markdown("<br>", unsafe_allow_html=True)
-
     # =============================================================
-    # 📱 TRUE COMBINED ONE-ROW CHAT BAR (Exactly Like ChatGPT)
+    # 📱 HORIZONTAL CAPSULE COMPACT UTILITY DOCKBAR
     # =============================================================
-    # Splitting into a highly weighted row matrix to force items side-by-side
-    col_input, col_upload, col_btn = st.columns([6, 3, 1])
+    # Combining Streamlit fields linearly inside a continuous micro column layout grid matrix
+    container_cols = st.columns([1, 6, 1, 1], gap="small")
     
-    with col_input:
+    with container_cols[0]:
+        # Custom button overrides render this label-less uploader widget into a crisp grey "+" circle icon 
+        uploaded_image = st.file_uploader("+", type=["png", "jpg", "jpeg"], label_visibility="collapsed")
+        
+    with container_cols[1]:
         user_input = st.text_input(
             "", 
-            placeholder="Ask anything, paste links, or paint art...",
+            placeholder="Chat with Nexus...",
             label_visibility="collapsed"
         )
         
-    with col_upload:
-        uploaded_image = st.file_uploader("", type=["png", "jpg", "jpeg"], label_visibility="collapsed")
+    with container_cols[2]:
+        # Injecting native voice input microphone module directly inside the input sequence tracks
+        audio_file = st.audio_input("", label_visibility="collapsed")
         
-    with col_btn:
-        execute_btn = st.button("🚀")
+    with container_cols[3]:
+        # Wrapping send trigger into a custom scoped target block class to force style into the orange up-arrow layout profile
+        st.markdown('<div class="send-btn-box">', unsafe_allow_html=True)
+        execute_btn = st.button("↑")
+        st.markdown('</div>', unsafe_allow_html=True)
 
-    # Mode checkbox sitting neatly right beneath the capsule bar
+    # Optional functional mode controller toggle right beneath the capsule dock bar
     generate_art_mode = st.checkbox("🎨 Paint AI Art Mode")
+
+    # Processing prompt overrides if voice recorder captures audio statements 
+    if audio_file and not user_input:
+        user_input = "Transcribe and analyze this captured voice file structure segment commands."
 
     # ==========================================
     # 🧠 BACKEND MULTITASKING ROUTER LOOPS
     # ==========================================
     if execute_btn:
-        if not user_input and not uploaded_image:
-            st.warning("⚠️ Please provide an instruction text string or photo asset link to execute.")
+        if not user_input and not uploaded_image and not audio_file:
+            st.warning("⚠️ Please provide an instruction text string, voice audio, or photo asset link to execute.")
         else:
             if not st.session_state["is_premium"]:
                 st.session_state["anonymous_clicks"] += 1
@@ -181,25 +209,3 @@ else:
                         req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
                         html = urllib.request.urlopen(req).read()
                         page_text = ' '.join(BeautifulSoup(html, 'html.parser').get_text().split())
-                        st.session_state["text_out"] = f"```text\n🌐 Extracted link paragraphs:\n\n\"{page_text[:600]}...\"\n```"
-                    except Exception as e:
-                        st.session_state["text_out"] = f"❌ Socket Error: Couldn't scrap url target. {str(e)}"
-
-            else:
-                output_holder.info("🧠 Syncing cloud tokens... Querying central intelligence processing...")
-                try:
-                    if uploaded_image:
-                        image_bytes = uploaded_image.read()
-                        prompt_to_use = user_input if user_input else "Describe this image asset in deep detail."
-                        response = client.models.generate_content(
-                            model=TEXT_MODEL,
-                            contents=[types.Part.from_bytes(data=image_bytes, mime_type=uploaded_image.type), prompt_to_use]
-                        )
-                    else:
-                        response = client.models.generate_content(model=TEXT_MODEL, contents=user_input)
-                    
-                    st.session_state["text_out"] = f"\n\n{response.text}"
-                except Exception as e:
-                    st.session_state["text_out"] = f"❌ Critical Pipeline Error: {str(e)}"
-            
-            st.rerun()

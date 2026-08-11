@@ -32,10 +32,11 @@ def core_engine(text_input):
             return f"💡 AI Web Scraper Result:\n\n\"{page_text[:400]}...\""
         except Exception as e: return f"💡 AI Web Error:\nCould not read link: {str(e)}"
         
-    # Task 3: Official Google Gemini Language Model Connection
+    # Task 3: Secure Google Gemini Language Model Connection
     else:
         try:
-            gemini_key = "AIzaSy" + "AQ.Ab8RN6JmLTqLOzI5IdLx3zKAp1XU_fyPh9BQAuXL30afdw0eWQ"
+            # Safely pulls the key from your hidden app settings vault
+            gemini_key = st.secrets["GEMINI_KEY"]
             
             url = f"https://googleapis.com{gemini_key}"
             payload = {"contents": [{"parts": [{"text": text_input}]}]}
@@ -45,11 +46,12 @@ def core_engine(text_input):
             response = urllib.request.urlopen(req).read().decode("utf-8")
             res_json = json.loads(response)
             
-            ai_text = res_json['candidates'][0]['content']['parts'][0]['text']
+            ai_text = res_json['candidates']['content']['parts']['text']
             return f"🧠 Gemini AI Brain Response:\n\n{ai_text}"
         except Exception as e:
-            return f"💡 AI Brain Configuration Required:\n\nSystem engine processing error. Details: {str(e)}"
+            return f"💡 AI Brain Configuration Required:\n\nPlease add your key named 'GEMINI_KEY' into the Streamlit Secrets Vault! Details: {str(e)}"
 
 if execute_btn and user_input:
     result = core_engine(user_input)
     st.text_area("AI System Response", value=result, height=250)
+    

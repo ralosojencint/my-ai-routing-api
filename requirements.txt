@@ -1,4 +1,6 @@
 streamlit
+google-genai
+beautifulsoup4
 fastapi
 uvicorn
 pydantic

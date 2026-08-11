@@ -34,7 +34,7 @@ def core_engine(text_input):
             return f"💡 AI Web Scraper Result:\n\n\"{page_text[:400]}...\""
         except Exception as e: return f"💡 AI Web Error:\nCould not read link: {str(e)}"
         
-    # Task 3: Official Active SDK Connection
+    # Task 3: Official Active SDK Connection (Gemini 3 Family)
     else:
         try:
             # Pull key securely out of Streamlit's secrets manager vault
@@ -43,9 +43,9 @@ def core_engine(text_input):
             # Start official Google Client with your key credentials
             client = genai.Client(api_key=api_key_str)
             
-            # FIXED MODEL: Calling the correct current active flagship version
+            # FIXED TARGET MODEL: Using the updated stable model string
             response = client.models.generate_content(
-                model='gemini-2.0-flash',
+                model='gemini-3.5-flash',
                 contents=text_input,
             )
             return f"🧠 Gemini AI Brain Response:\n\n{response.text}"

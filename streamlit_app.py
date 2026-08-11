@@ -6,11 +6,11 @@ from google.genai import types
 # Configure luxury full-width layout canvas
 st.set_page_config(page_title="Nexus", page_icon="✨", layout="centered")
 
-# Visual CSS layout overrides to force a true horizontal mobile pill bar container shape
+# Visual CSS styling to upgrade the interface UI and force native elements inline
 st.markdown("""
 <style>
 .stApp { background-color: #0d0e12; }
-h1 { color: #f3f4f6 !important; font-family: 'Inter', sans-serif; text-align: center; font-weight: 700; margin-top: 30px !important; margin-bottom: 20px !important;}
+h1 { color: #f3f4f6 !important; font-family: 'Inter', sans-serif; text-align: center; font-weight: 700; margin-top: 50px !important; margin-bottom: 25px !important;}
 
 /* Elegant custom message speech bubbles formatting */
 .chat-bubble { padding: 12px 16px; border-radius: 20px; margin-bottom: 12px; max-width: 85%; font-family: 'Inter', sans-serif; font-size: 15px; line-height: 1.5; }
@@ -21,8 +21,8 @@ h1 { color: #f3f4f6 !important; font-family: 'Inter', sans-serif; text-align: ce
 /* Keeps scrolling space optimized above the sticky bottom capsule dock */
 .chat-container { margin-bottom: 110px; display: flex; flex-direction: column; }
 
-/* FORCING NATIVE CONTROLS ONTO 1 SINGLE HORIZONTAL PILL DOCK CAPSULE */
-form[data-testid="stForm"] {
+/* HARD-FORCING EVERY CONTROL ONTO 1 SINGLE HORIZONTAL PILL CONTAINER ROW */
+[data-testid="stHorizontalBlock"] {
     display: flex !important;
     flex-direction: row !important;
     flex-wrap: nowrap !important;
@@ -30,36 +30,21 @@ form[data-testid="stForm"] {
     background-color: #1e202a !important;
     border-radius: 35px !important;
     border: 1px solid #2e3244 !important;
-    padding: 6px 12px !important;
-    gap: 10px !important;
+    padding: 6px 14px !important;
+    gap: 8px !important;
     width: 100% !important;
     position: fixed !important;
-    bottom: 20px !important; /* Locks capsule row flat to the bottom of the screen */
+    bottom: 20px !important; /* Pins capsule flat to the absolute bottom row */
     left: 50% !important;
     transform: translateX(-50%) !important;
     max-width: 90% !important;
     z-index: 99999 !important;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.5);
 }
 
-/* Ensuring all internal sub-containers strip margins and sit inline flat */
-form[data-testid="stForm"] > div { width: auto !important; padding: 0 !important; margin: 0 !important; display: flex !important; align-items: center !important; }
-form[data-testid="stForm"] > div:nth-child(2) { flex-grow: 2 !important; width: 100% !important; }
+[data-testid="stHorizontalBlock"] > div { width: auto !important; padding: 0 !important; margin: 0 !important; }
+[data-testid="stHorizontalBlock"] > div:nth-child(2) { flex-grow: 2 !important; width: 100% !important; }
 
-/* Removing clunky borders around the text bar */
-div.stTextInput { width: 100% !important; padding: 0 !important; margin: 0 !important; }
-div.stTextInput > div > div > input {
-    background-color: transparent !important;
-    color: white !important;
-    border: none !important;
-    padding-left: 5px !important;
-    height: 44px !important;
-    font-size: 15px !important;
-    outline: none !important;
-}
-div.stTextInput > div > div { border: none !important; background-color: transparent !important; box-shadow: none !important; }
-
-/* Turning the file upload box into a clean grey circular plus icon inside the bar */
+/* Formatting file upload block into a clean circular grey plus icon button inside the bar */
 div[data-testid="stFileUploader"] { max-width: 38px !important; margin: 0 !important; padding: 0 !important; }
 div[data-testid="stFileUploaderDropzone"] { padding: 0 !important; background-color: transparent !important; border: none !important; }
 div[data-testid="stFileUploaderDropzone"] button {
@@ -77,8 +62,12 @@ div[data-testid="stFileUploaderDropzone"] button {
 }
 div[data-testid="stFileUploaderDropzone"] span, div[data-testid="stFileUploaderDropzone"] div { display: none !important; }
 
-/* Custom blue circle submit capsule button formatting inside the bar */
-form[data-testid="stForm"] button[type="submit"] {
+/* Stripping away standard margins around text inputs inside the capsule bar */
+div.stTextInput > div > div > input { background-color: transparent !important; color: white !important; border: none !important; padding-left: 2px !important; height: 38px !important; font-size: 14px !important; }
+div.stTextInput > div > div { border: none !important; background-color: transparent !important; box-shadow: none !important; }
+
+/* Styling the orange up-arrow submit trigger capsule button */
+.send-btn-box button {
     background-color: #2563eb !important;
     color: white !important;
     border-radius: 50% !important;
@@ -92,8 +81,8 @@ form[data-testid="stForm"] button[type="submit"] {
     align-items: center !important;
     justify-content: center !important;
     padding: 0 !important;
+    margin: 0 !important;
 }
-form[data-testid="stForm"] button[type="submit"]:hover { background-color: #1d4ed8 !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -128,13 +117,19 @@ else:
     # =========================================================================================
     # 📱 THE NATIVE HORIZONTAL PILL BAR CAPSULE (Plus, Text Bar, Blue Button ALL COMPRESSED INLINE)
     # ========================================================================================
-    with st.form(key="nexus_unbreakable_capsule_bar", clear_on_submit=True):
+    pill_cols = st.columns(3)
+    
+    with pill_cols:
         uploaded_image = st.file_uploader("+", type=["png", "jpg", "jpeg"], label_visibility="collapsed")
+    with pill_cols:
         user_input = st.text_input("", placeholder="Send", label_visibility="collapsed")
-        execute_btn = st.form_submit_button(label="↑")
+    with pill_cols:
+        st.markdown('<div class="send-btn-box">', unsafe_allow_html=True)
+        execute_btn = st.button("↑")
+        st.markdown('</div>', unsafe_allow_html=True)
 
     # ==========================================
-    # 🧠 BACKEND MULTI-TURN CHAT CONTEXT ROUTER (Deadlock Removed)
+    # 🧠 BACKEND MULTI-TURN CHAT CONTEXT ROUTER
     # ==========================================
     if execute_btn and user_input:
         if not st.session_state["is_premium"]: st.session_state["anonymous_clicks"] += 1

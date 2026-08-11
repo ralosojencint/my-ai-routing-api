@@ -156,4 +156,5 @@ else:
             if "last_artwork_generated" in st.session_state:
                 st.image(st.session_state["last_artwork_generated"], caption=f"Generated Prompt: {user_input}", use_container_width=True)
                 
-            st.rerun()
+            # st.rerun()
+

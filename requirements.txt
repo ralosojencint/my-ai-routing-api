@@ -1,5 +1,5 @@
 streamlit
 requests
-openai
-pypdf
-reportlab
+fpdf2
+Pillow
+google-genai

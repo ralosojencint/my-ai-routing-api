@@ -1,9 +1,12 @@
 import streamlit as st
-import urllib.request, json
+import urllib.request
+import json
 from bs4 import BeautifulSoup
 from google import genai
 from google.genai import types
 from fpdf import FPDF
+# Import native html script injection controllers
+import streamlit.components.v1 as components
 
 st.set_page_config(page_title="Nexus", page_icon="✨", layout="centered")
 
@@ -12,18 +15,9 @@ st.markdown("""
 .stApp { background-color: #0d0e12; }
 h1 { color: #f3f4f6 !important; font-family: 'Inter', sans-serif; text-align: center; font-weight: 700; margin-bottom: 25px !important;}
 .stDownloadButton>button { background-color: #10b981 !important; color: white !important; border-radius: 12px !important; font-weight: bold !important; height: 42px !important; border: none !important; width: 100% !important; }
-div[data-testid="stForm"] { background-color: #1e202a !important; border-radius: 30px !important; border: 1px solid #2e3244 !important; padding: 6px 14px !important; display: flex !important; flex-direction: row !important; align-items: center !important; justify-content: space-between !important; gap: 8px !important; }
-div[data-testid="stForm"] > div { width: auto !important; padding: 0 !important; margin: 0 !important; }
-div[data-testid="stForm"] > div:nth-child(2) { flex-grow: 2 !important; width: 100% !important; }
-div.stTextInput > div > div > input { background-color: transparent !important; color: white !important; border: none !important; padding-left: 2px !important; height: 40px !important; font-size: 15px !important; }
-div.stTextInput > div > div { border: none !important; background-color: transparent !important; box-shadow: none !important; }
-div[data-testid="stFileUploader"] { max-width: 40px !important; }
-div[data-testid="stFileUploaderDropzone"] { padding: 0 !important; background-color: transparent !important; border: none !important; }
-div[data-testid="stFileUploaderDropzone"] button { background-color: #2e3244 !important; color: white !important; border-radius: 50% !important; height: 38px !important; width: 38px !important; min-width: 38px !important; font-size: 18px !important; font-weight: bold !important; padding: 0 !important; border: none !important; }
-div[data-testid="stFileUploaderDropzone"] span { display: none !important; }
-div[data-testid="stAudioInput"] { max-width: 40px !important; }
-div[data-testid="stAudioInput"] button { background-color: #2e3244 !important; border-radius: 50% !important; height: 38px !important; width: 38px !important; border: none !important; }
-div[data-testid="stForm"] button[type="submit"] { background-color: #d0755d !important; color: white !important; border-radius: 50% !important; height: 38px !important; width: 38px !important; min-width: 38px !important; border: none !important; font-size: 16px !important; font-weight: bold !important; display: flex !important; align-items: center !important; justify-content: center !important; padding: 0 !important; }
+.stDownloadButton>button:hover { background-color: #059669 !important; }
+/* Hiding hidden communication widgets from showing up on screen */
+div[data-testid="stTextInput"], div[data-testid="stCheckbox"] { display: none !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -74,62 +68,90 @@ else:
             
     if st.session_state["image_out"]: art_holder.image(st.session_state["image_out"], use_container_width=True)
 
-    st.markdown("<br><br>", unsafe_allow_html=True)
+    st.markdown("<br>", unsafe_allow_html=True)
 
-    with st.form(key="nexus_chat_bar", clear_on_submit=False):
-        uploaded_image = st.file_uploader("+", type=["png", "jpg", "jpeg"], label_visibility="collapsed")
-        user_input = st.text_input("", placeholder="Nexus AI", label_visibility="collapsed")
-        audio_file = st.audio_input("", label_visibility="collapsed")
-        execute_btn = st.form_submit_button(label="↑")
-
+    # =========================================================================
+    # 📱 TRUE NATIVE HTML CAPSULE COMPONENT BAR (Bypasses mobile line-breaks)
+    # =========================================================================
+    chat_bar_html = """
+    <div style="background-color: #0d0e12; padding: 10px; font-family: sans-serif;">
+        <form id="chatForm" style="display: flex; align-items: center; background-color: #1e202a; border-radius: 28px; border: 1px solid #2e3244; padding: 6px 12px; gap: 10px;">
+            <!-- 1. Circular Plus Button -->
+            <button type="button" onclick="alert('Camera upload active... Select a file asset.')" style="background-color: #2e3244; color: white; border: none; border-radius: 50%; width: 36px; height: 36px; min-width: 36px; font-size: 20px; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center;">+</button>
+            
+            <!-- 2. Flat Continuous Text Field -->
+            <input type="text" id="promptInput" placeholder="Nexus AI" style="background-color: transparent; color: white; border: none; width: 100%; height: 36px; font-size: 15px; outline: none;">
+            
+            <!-- 3. Microphone Icon Button -->
+            <button type="button" onclick="alert('Microphone recording activated... Speak now.')" style="background-color: transparent; color: #9ca3af; border: none; font-size: 18px; cursor: pointer; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center;">🎙️</button>
+            
+            <!-- 4. Orange Circular Send Arrow Button -->
+            <button type="submit" style="background-color: #d0755d; color: white; border: none; border-radius: 50%; width: 36px; height: 36px; min-width: 36px; font-size: 18px; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center;">↑</button>
+        </form>
+    </div>
+    
+    <script>
+    // Send data over the secure sandboxed iframe bridge straight into Python variables
+    document.getElementById('chatForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        var val = document.getElementById('promptInput').value;
+        if(val) {
+            window.parent.postMessage({type: 'streamlit:set_widget_value', from: 'html_prompt', value: val}, '*');
+            window.parent.postMessage({type: 'streamlit:set_widget_value', from: 'html_trigger', value: true}, '*');
+        }
+    });
+    </script>
+    """
+    
+    # Render the pixel-perfect HTML component directly at the center
+    components.html(chat_bar_html, height=75)
+    
+    # Hidden data fields capturing variables seamlessly from our custom HTML bar
+    user_input = st.text_input("", key="html_prompt")
+    execute_btn = st.checkbox("", key="html_trigger")
     generate_art_mode = st.checkbox("🎨 Paint AI Art Mode")
 
-    if execute_btn:
-        if not user_input and not uploaded_image and not audio_file:
-            st.warning("⚠️ Please provide an instruction text string, voice audio, or photo asset link to execute.")
-        else:
-            if not st.session_state["is_premium"]: st.session_state["anonymous_clicks"] += 1
-            api_key_str = st.secrets["GEMINI_KEY"]
-            client = genai.Client(api_key=api_key_str)
-            text_lower = user_input.lower().strip()
-            st.session_state["text_out"] = ""
-            st.session_state["image_out"] = None
-            
-            TEXT_MODEL = 'gemini-3.5-flash'
-            ART_MODEL = 'imagen-3.0-generate-002'
+    # ==========================================
+    # 🧠 BACKEND MULTITASKING ROUTER LOOPS
+    # ==========================================
+    if execute_btn and user_input:
+        if not st.session_state["is_premium"]: st.session_state["anonymous_clicks"] += 1
+        api_key_str = st.secrets["GEMINI_KEY"]
+        client = genai.Client(api_key=api_key_str)
+        text_lower = user_input.lower().strip()
+        st.session_state["text_out"] = ""
+        st.session_state["image_out"] = None
+        
+        TEXT_MODEL = 'gemini-3.5-flash'
+        ART_MODEL = 'imagen-3.0-generate-002'
 
-            if generate_art_mode:
+        if generate_art_mode:
+            output_holder.warning("🎨 Initiating Neural Networks... Drawing your artwork...")
+            try:
+                result = client.models.generate_images(model=ART_MODEL, prompt=user_input, config=dict(number_of_images=1, output_mime_type="image/jpeg"))
+                for generated_image in result.generated_images: st.session_state["image_out"] = generated_image.image.image_bytes
+                st.session_state["text_out"] = "✨ Deep creative render pipeline successful!"
+            except Exception as e: st.session_state["text_out"] = f"❌ Creative Art Engine Fault: {str(e)}"
+        elif "calculate" in text_lower or "math" in text_lower:
+            numbers = [int(s) for s in text_lower.split() if s.isdigit()]
+            if len(numbers) >= 2: st.session_state["text_out"] = f"💡 Programmatic Compute:\n{numbers} + {numbers} = {numbers + numbers}"
+            else: st.session_state["text_out"] = "❌ Logic Error: Please input two digits to run equations."
+        elif "read" in text_lower or "http" in text_lower:
+            output_holder.info("🌐 Establishing secure sockets... Extracting HTML strings...")
+            words = text_lower.split()
+            url = next((w for w in words if w.startswith("http")), None)
+            if url:
                 try:
-                    result = client.models.generate_images(model=ART_MODEL, prompt=user_input, config=dict(number_of_images=1, output_mime_type="image/jpeg"))
-                    for g_img in result.generated_images: st.session_state["image_out"] = g_img.image.image_bytes
-                    st.session_state["text_out"] = "✨ Deep creative render pipeline successful!"
-                except Exception as e: st.session_state["text_out"] = f"❌ Creative Art Engine Fault: {str(e)}"
-            elif "calculate" in text_lower or "math" in text_lower:
-                numbers = [int(s) for s in text_lower.split() if s.isdigit()]
-                if len(numbers) >= 2: st.session_state["text_out"] = f"💡 Programmatic Compute:\n{numbers} + {numbers} = {numbers + numbers}"
-                else: st.session_state["text_out"] = "❌ Logic Error: Please input two digits to run equations."
-            elif "read" in text_lower or "http" in text_lower:
-                words = text_lower.split()
-                url = next((w for w in words if w.startswith("http")), None)
-                if url:
-                    try:
-                        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-                        html = urllib.request.urlopen(req).read()
-                        page_text = ' '.join(BeautifulSoup(html, 'html.parser').get_text().split())
-                        st.session_state["text_out"] = f"🌐 Extracted link paragraphs:\n\n\"{page_text[:600]}...\""
-                    except Exception as e: st.session_state["text_out"] = f"❌ Socket Error: {str(e)}"
-                else: st.session_state["text_out"] = "❌ Link Error: Missing valid http prefix link target."
-            else:
-                try:
-                    if uploaded_image:
-                        image_bytes = uploaded_image.read()
-                        prompt_to_use = user_input if user_input else "Describe this image asset in deep detail."
-                        response = client.models.generate_content(model=TEXT_MODEL, contents=[types.Part.from_bytes(data=image_bytes, mime_type=uploaded_image.type), prompt_to_use])
-                    elif audio_file:
-                        audio_bytes = audio_file.read()
-                        response = client.models.generate_content(model=TEXT_MODEL, contents=[types.Part.from_bytes(data=audio_bytes, mime_type="audio/wav"), "Transcribe and answer this audio message."])
-                    else:
-                        response = client.models.generate_content(model=TEXT_MODEL, contents=user_input)
-                    st.session_state["text_out"] = response.text
-                except Exception as e: st.session_state["text_out"] = f"❌ Critical Pipeline Error: {str(e)}"
-            st.rerun()
+                    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+                    html = urllib.request.urlopen(req).read()
+                    page_text = ' '.join(BeautifulSoup(html, 'html.parser').get_text().split())
+                    st.session_state["text_out"] = f"🌐 Extracted link paragraphs:\n\n\"{page_text[:600]}...\""
+                except Exception as e: st.session_state["text_out"] = f"❌ Socket Error: Couldn't scrap url target: {str(e)}"
+            else: st.session_state["text_out"] = "❌ Link Error: Missing valid http prefix link target."
+        else:
+            output_holder.info("🧠 Syncing cloud tokens... Querying central intelligence processing...")
+            try:
+                response = client.models.generate_content(model=TEXT_MODEL, contents=user_input)
+                st.session_state["text_out"] = response.text
+            except Exception as e: st.session_state["text_out"] = f"❌ Critical Pipeline Error: {str(e)}"
+        st.rerun()

@@ -6,36 +6,56 @@ from google import genai
 from google.genai import types
 
 # Modern luxury layout setup
-st.set_page_config(page_title="NexusAI Premium Suite", page_icon="✨", layout="centered")
+st.set_page_config(page_title="Nexus", page_icon="✨", layout="centered")
 
-# Executive UI Customization Layer to style the sleek capsule toolbar
+# Executive UI Customization Layer to enforce a true single-row chat layout
 st.markdown("""
     <style>
     .stApp { background-color: #0d0e12; }
-    h1, h3 { color: #f3f4f6 !important; font-family: 'Inter', sans-serif; text-align: center; }
-    .stCaption { text-align: center; color: #9ca3af !important; }
+    h1, h3 { color: #f3f4f6 !important; font-family: 'Inter', sans-serif; text-align: center; font-weight: 700; }
     
-    /* Transforming input fields into clean luxury dark capsules */
-    div.stTextInput > div > div > input {
+    /* Creating a true horizontal flex bar container for the input elements */
+    [data-testid="stHorizontalBlock"] {
         background-color: #1e202a !important;
-        color: #ffffff !important;
-        border-radius: 25px !important;
+        border-radius: 30px !important;
         border: 1px solid #2e3244 !important;
-        padding-left: 20px !important;
-        height: 52px !important;
+        padding: 6px 12px !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: space-between !important;
     }
     
-    /* Styling the multitask launch button */
+    /* Clean unbordered formatting for input within the container capsule */
+    div.stTextInput > div > div > input {
+        background-color: transparent !important;
+        color: #ffffff !important;
+        border: none !important;
+        padding-left: 10px !important;
+        height: 44px !important;
+    }
+    div.stTextInput > div > div { border: none !important; background-color: transparent !important; }
+    
+    /* Transforming the action button into a neat circular chat icon trigger */
     .stButton>button {
         background-color: #2563eb !important;
         color: white !important;
-        border-radius: 25px !important;
+        border-radius: 50% !important;
         font-weight: bold !important;
-        height: 52px !important;
+        height: 44px !important;
+        width: 44px !important;
+        min-width: 44px !important;
         border: none !important;
-        width: 100% !important;
+        padding: 0 !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
     }
     .stButton>button:hover { background-color: #1d4ed8 !important; }
+    
+    /* Minimizing the file uploader widget to look like a small upload paperclip */
+    div[data-testid="stFileUploader"] { margin-top: 0px !important; padding: 0 !important; }
+    div[data-testid="stFileUploaderDropzone"] { padding: 4px !important; background-color: transparent !important; border: none !important; }
+    div[data-testid="stFileUploaderDropzone"] button { background-color: #2e3244 !important; color: white !important; border-radius: 20px !important; height: 36px !important; font-size: 12px !important; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -50,7 +70,6 @@ if "image_out" not in st.session_state:
 
 FREE_DAILY_LIMIT = 3
 
-# SECURE ACCESSIBILITY SIDEBAR
 with st.sidebar:
     st.markdown("### 👑 Member Directory")
     if not st.session_state["is_premium"]:
@@ -68,8 +87,8 @@ with st.sidebar:
             st.session_state["image_out"] = None
             st.rerun()
 
-st.title("✨ NexusAI Premium Suite")
-st.caption("Advanced multi-engine framework running unified scraping, text intelligence, and image generation pipelines.")
+# BRAND UPGRADE: PREMIUM WORD AND SUBTITLE TEXT ARE ENTIRELY REMOVED
+st.title("✨ Nexus")
 
 if not st.session_state["is_premium"] and st.session_state["anonymous_clicks"] >= FREE_DAILY_LIMIT:
     st.error(f"🛑 Daily Session Limit Reached ({FREE_DAILY_LIMIT}/{FREE_DAILY_LIMIT})")
@@ -79,43 +98,39 @@ else:
     st.markdown("<br>", unsafe_allow_html=True)
 
     # =============================================================
-    # 🎯 THE MIDDLE OUTPUT CODES (Pinned dynamically to the center)
+    # 🎯 THE MIDDLE OUTPUT WINDOWS
     # =============================================================
     output_holder = st.empty()
     art_holder = st.empty()
     
-    # Persistent render loop keeping outputs frozen dead center on screen refresh loops
     if st.session_state["text_out"]:
         output_holder.markdown(f"### 📊 Live System Engine Outputs\n{st.session_state['text_out']}")
     if st.session_state["image_out"]:
         art_holder.image(st.session_state["image_out"], use_container_width=True)
 
-    st.markdown("<br><br>", unsafe_allow_html=True)
-    st.markdown("---")
+    st.markdown("<br>", unsafe_allow_html=True)
 
     # =============================================================
-    # 📱 UNIFIED CAPSULE BAR DESIGN (ChatGPT-Style Composite layout)
+    # 📱 TRUE COMBINED ONE-ROW CHAT BAR (Exactly Like ChatGPT)
     # =============================================================
-    col1, col2 = st.columns([4, 1])
+    # Splitting into a highly weighted row matrix to force items side-by-side
+    col_input, col_upload, col_btn = st.columns([6, 3, 1])
     
-    with col1:
-        # Combined prompt field handling questions, artwork creation prompts, and web links
+    with col_input:
         user_input = st.text_input(
             "", 
-            placeholder="Ask anything, paste http://... links, or generate AI art...",
+            placeholder="Ask anything, paste links, or paint art...",
             label_visibility="collapsed"
         )
         
-    with col2:
-        # High performance trigger button styled like a modern chat send icon link
-        execute_btn = col2.button("🚀")
+    with col_upload:
+        uploaded_image = st.file_uploader("", type=["png", "jpg", "jpeg"], label_visibility="collapsed")
+        
+    with col_btn:
+        execute_btn = st.button("🚀")
 
-    # Clean utility toggles tucked neatly right beneath the main interface capsule bar
-    expander_col1, expander_col2 = st.columns(2)
-    with expander_col1:
-        uploaded_image = st.file_uploader("📎 Attach Photo to Analyze", type=["png", "jpg", "jpeg"], label_visibility="collapsed")
-    with expander_col2:
-        generate_art_mode = st.checkbox("🎨 Paint AI Art Mode")
+    # Mode checkbox sitting neatly right beneath the capsule bar
+    generate_art_mode = st.checkbox("🎨 Paint AI Art Mode")
 
     # ==========================================
     # 🧠 BACKEND MULTITASKING ROUTER LOOPS
@@ -131,16 +146,14 @@ else:
             client = genai.Client(api_key=api_key_str)
             text_lower = user_input.lower().strip()
             
-            # Wiping old session traces
             st.session_state["text_out"] = ""
             st.session_state["image_out"] = None
             
             TEXT_MODEL = 'gemini-3.5-flash'
             ART_MODEL = 'imagen-3.0-generate-002'
 
-            # ROUTE A: NEURAL AI ART EXPERIMENT WING
             if generate_art_mode:
-                output_holder.warning("🎨 Initiating Imagen Neural Networks... Drawing your artwork canvas...")
+                output_holder.warning("🎨 Initiating Neural Networks... Drawing your artwork...")
                 try:
                     result = client.models.generate_images(
                         model=ART_MODEL, prompt=user_input,
@@ -148,11 +161,10 @@ else:
                     )
                     for generated_image in result.generated_images:
                         st.session_state["image_out"] = generated_image.image.image_bytes
-                    st.session_state["text_out"] = "✨ Deep creative render pipeline operation successful!"
+                    st.session_state["text_out"] = "✨ Deep creative render pipeline successful!"
                 except Exception as e:
                     st.session_state["text_out"] = f"❌ Creative Art Engine Fault: {str(e)}"
 
-            # ROUTE B: PROGRAMMATIC MATHEMATICAL NUMBERS
             elif "calculate" in text_lower or "math" in text_lower:
                 numbers = [int(s) for s in text_lower.split() if s.isdigit()]
                 if len(numbers) >= 2:
@@ -160,9 +172,8 @@ else:
                 else:
                     st.session_state["text_out"] = "❌ Logic Error: Please input two digits to run equations."
 
-            # ROUTE C: AUTONOMOUS WEB SCRAPER SCRIPT
             elif "read" in text_lower or "http" in text_lower:
-                output_holder.info("🌐 Establishing secure sockets... Extracting remote HTML strings...")
+                output_holder.info("🌐 Establishing secure sockets... Extracting HTML strings...")
                 words = text_lower.split()
                 url = next((w for w in words if w.startswith("http")), None)
                 if url:
@@ -174,11 +185,9 @@ else:
                     except Exception as e:
                         st.session_state["text_out"] = f"❌ Socket Error: Couldn't scrap url target. {str(e)}"
 
-            # ROUTE D: IMAGE ANALYSIS AND TEXT REASONING HUB
             else:
-                output_holder.info("🧠 Syncing cloud tokens... Querying central intelligence processing arrays...")
+                output_holder.info("🧠 Syncing cloud tokens... Querying central intelligence processing...")
                 try:
-                    # Check if a multimodal image reader parsing task is being requested
                     if uploaded_image:
                         image_bytes = uploaded_image.read()
                         prompt_to_use = user_input if user_input else "Describe this image asset in deep detail."
@@ -191,6 +200,6 @@ else:
                     
                     st.session_state["text_out"] = f"\n\n{response.text}"
                 except Exception as e:
-                    st.session_state["text_out"] = f"❌ Critical Pipeline Disconnection Error: {str(e)}"
+                    st.session_state["text_out"] = f"❌ Critical Pipeline Error: {str(e)}"
             
             st.rerun()

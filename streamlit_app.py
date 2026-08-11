@@ -3,94 +3,29 @@ from bs4 import BeautifulSoup
 from google import genai
 from google.genai import types
 
-# Configure luxury full-width layout canvas
 st.set_page_config(page_title="Nexus", page_icon="✨", layout="centered")
 
-# Visual CSS overrides to force native layout components to stay locked on 1 horizontal row
 st.markdown("""
 <style>
 .stApp { background-color: #0d0e12; }
-h1 { color: #f3f4f6 !important; font-family: 'Inter', sans-serif; text-align: center; font-weight: 700; margin-top: 50px !important; margin-bottom: 25px !important;}
+h1 { color: #f3f4f6 !important; font-family: 'Inter', sans-serif; text-align: center; font-weight: 700; margin-top: 30px !important; margin-bottom: 20px !important;}
+div[data-testid="stTextInput"], div[data-testid="stCheckbox"], form[data-testid="stForm"] { display: none !important; }
 
-/* FORCING NATIVE FORM GRID ONTO A SINGLE HORIZONTAL BOTTOM ROW CONTAINER */
-form[data-testid="stForm"] {
-    display: flex !important;
-    flex-direction: row !important;
-    flex-wrap: nowrap !important;
-    align-items: center !important;
-    background-color: #1e202a !important;
-    border-radius: 35px !important;
-    border: 1px solid #2e3244 !important;
-    padding: 4px 10px !important;
-    gap: 10px !important;
-    width: 100% !important;
-    position: fixed !important;
-    bottom: 20px !important; /* Locks capsule row flat to the bottom of the screen */
-    left: 50% !important;
-    transform: translateX(-50%) !important;
-    max-width: 90% !important;
-    z-index: 99999 !important;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.5);
-}
+/* Elegant custom message speech bubbles formatting */
+.chat-bubble { padding: 12px 16px; border-radius: 20px; margin-bottom: 12px; max-width: 85%; font-family: 'Inter', sans-serif; font-size: 15px; line-height: 1.5; }
+.user-msg { background-color: #2e3244; color: #f3f4f6; margin-left: auto; border-bottom-right-radius: 4px; }
+.ai-msg { background-color: #1e202a; color: #f3f4f6; margin-right: auto; border-bottom-left-radius: 4px; border: 1px solid #2e3244; }
+.msg-label { font-size: 11px; color: #9ca3af; margin-bottom: 4px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
 
-/* Ensuring all column components sit inline inside the main bar container matrix */
-form[data-testid="stForm"] > div { width: auto !important; padding: 0 !important; margin: 0 !important; display: flex !important; align-items: center !important; }
-form[data-testid="stForm"] > div:nth-child(2) { flex-grow: 2 !important; width: 100% !important; }
-
-/* Stripping away standard margins around text inputs inside the capsule bar */
-div.stTextInput { width: 100% !important; padding: 0 !important; margin: 0 !important; }
-div.stTextInput > div > div > input {
-    background-color: transparent !important;
-    color: white !important;
-    border: none !important;
-    padding-left: 5px !important;
-    height: 44px !important;
-    font-size: 15px !important;
-    outline: none !important;
-}
-div.stTextInput > div > div { border: none !important; background-color: transparent !important; box-shadow: none !important; }
-
-/* Formatting file upload block into a clean circular grey plus icon button inside the bar */
-div[data-testid="stFileUploader"] { max-width: 38px !important; margin: 0 !important; padding: 0 !important; }
-div[data-testid="stFileUploaderDropzone"] { padding: 0 !important; background-color: transparent !important; border: none !important; }
-div[data-testid="stFileUploaderDropzone"] button {
-    background-color: #2e3244 !important;
-    color: #9ca3af !important;
-    border-radius: 50% !important;
-    height: 36px !important;
-    width: 36px !important;
-    min-width: 36px !important;
-    font-size: 20px !important;
-    font-weight: bold !important;
-    padding: 0 !important;
-    padding-bottom: 2px !important;
-    border: none !important;
-}
-div[data-testid="stFileUploaderDropzone"] span, div[data-testid="stFileUploaderDropzone"] div { display: none !important; }
-
-/* Custom blue circle submit capsule button format inside the right track of the bar */
-form[data-testid="stForm"] button[type="submit"] {
-    background-color: #2563eb !important;
-    color: white !important;
-    border-radius: 50% !important;
-    height: 36px !important;
-    width: 36px !important;
-    min-width: 36px !important;
-    border: none !important;
-    font-size: 16px !important;
-    font-weight: bold !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    padding: 0 !important;
-}
-form[data-testid="stForm"] button[type="submit"]:hover { background-color: #1d4ed8 !important; }
+/* Keeps scrolling space optimized above the sticky bottom capsule dock */
+.chat-container { margin-bottom: 110px; display: flex; flex-direction: column; }
 </style>
 """, unsafe_allow_html=True)
 
+# 🧠 INITIALIZE CONVERSATIONAL MEMORY BACKEND TRACKERS
 if "anonymous_clicks" not in st.session_state: st.session_state["anonymous_clicks"] = 0
 if "is_premium" not in st.session_state: st.session_state["is_premium"] = False
-if "text_out" not in st.session_state: st.session_state["text_out"] = None
+if "chat_history" not in st.session_state: st.session_state["chat_history"] = []
 
 with st.sidebar:
     st.markdown("### 👑 Member Directory")
@@ -98,70 +33,74 @@ with st.sidebar:
         pass_input = st.text_input("Enter Passcode Key", type="password")
         if pass_input == "premium123": st.session_state["is_premium"] = True; st.rerun()
     else: st.success("👑 Premium Active")
+    if st.button("🗑️ Clear Chat History"):
+        st.session_state["chat_history"] = []
+        st.rerun()
 
 st.title("✨ Nexus")
 
 if not st.session_state["is_premium"] and st.session_state["anonymous_clicks"] >= 3:
     st.error("🛑 Limit Reached. Upgrade to Premium for unlimited access.")
 else:
-    # DESIGN WORKSPACE MIDDLE OUTPUT VIEW CONTAINERS (Outputs render above the bottom row capsule)
-    out_holder = st.empty()
-    if st.session_state["text_out"]:
-        out_holder.markdown(f"### 📊 Outputs\n{st.session_state['text_out']}")
-
-    # =========================================================================================
-    # 📱 THE COMPACT UNBREAKABLE NATIVE HORIZONTAL PILL BAR DOCK
-    # ========================================================================================
-    with st.form(key="nexus_unbreakable_capsule_bar", clear_on_submit=True):
-        # Circular grey '+' button nested natively into the inside left track of the search bar container
-        uploaded_image = st.file_uploader("+", type=["png", "jpg", "jpeg"], label_visibility="collapsed")
-        
-        # Core continuous unbordered text prompt entry field
-        user_input = st.text_input("", placeholder="Send", label_visibility="collapsed")
-        
-        # Circular blue submit arrow button nested natively into the far right track of the search bar container
-        execute_btn = st.form_submit_button(label="↑")
-
-    generate_art_mode = st.checkbox("🎨 Paint AI Art Mode")
-
-    # ==========================================
-    # 🧠 BACKEND MULTITASKING ROUTER LOOPS
-    # ==========================================
-    if execute_btn:
-        u_valid = 'uploaded_image' in locals() and uploaded_image is not None
-        art_valid = 'generate_art_mode' in locals() and generate_art_mode
-        
-        if not user_input and not u_valid:
-            st.warning("⚠️ Please provide an instruction text string or upload a photo asset.")
+    # 🎯 PRINT FULL RUNNING DIALOGUE HISTORY ONTO SCREEN CANVAS
+    st.markdown('<div class="chat-container">', unsafe_allow_html=True)
+    for msg in st.session_state["chat_history"]:
+        if msg["role"] == "user":
+            st.markdown(f'<div style="text-align: right;"><div class="msg-label">You</div></div><div class="chat-bubble user-msg">{msg["text"]}</div>', unsafe_allow_html=True)
         else:
-            if not st.session_state["is_premium"]: st.session_state["anonymous_clicks"] += 1
-            api_key_str = st.secrets["GEMINI_KEY"]
-            client = genai.Client(api_key=api_key_str)
-            text_lower = user_input.lower().strip() if user_input else ""
-            st.session_state["text_out"] = ""
-            
-            # CORE MODEL LAYER LOCKED TO YOUR PRECISE FLAGSHIP BACKEND DIRECTION
-            TEXT_MODEL = 'gemini-3.5-flash'
-            ART_MODEL = 'imagen-3.0-generate-002'
+            st.markdown(f'<div style="text-align: left;"><div class="msg-label">Nexus</div></div><div class="chat-bubble ai-msg">{msg["text"]}</div>', unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
 
-            if art_valid and user_input:
-                try:
-                    result = client.models.generate_images(model=ART_MODEL, prompt=user_input, config=dict(number_of_images=1, output_mime_type="image/jpeg"))
-                    st.image(result.generated_images.image.image_bytes, use_container_width=True)
-                    st.session_state["text_out"] = "✨ Deep creative render pipeline successful!"
-                except Exception as e: st.session_state["text_out"] = f"❌ Creative Art Engine Fault: {str(e)}"
-            elif "calculate" in text_lower or "math" in text_lower:
-                numbers = [int(s) for s in text_lower.split() if s.isdigit()]
-                if len(numbers) >= 2: st.session_state["text_out"] = f"💡 Programmatic Compute:\n{numbers} + {numbers} = {numbers + numbers}"
-            else:
-                try:
-                    # NATIVE MULTIMODAL EXTRACTION: Links text prompts and raw image data files cleanly with no network faults
-                    if u_valid:
-                        image_bytes = uploaded_image.read()
-                        prompt_to_use = user_input if user_input else "Describe this image asset in deep detail."
-                        response = client.models.generate_content(model=TEXT_MODEL, contents=[types.Part.from_bytes(data=image_bytes, mime_type=uploaded_image.type), prompt_to_use])
-                    else:
-                        response = client.models.generate_content(model=TEXT_MODEL, contents=user_input)
-                    st.session_state["text_out"] = response.text
-                except Exception as e: st.session_state["text_out"] = f"❌ Critical Pipeline Error: {str(e)}"
+    # 📱 UNBREAKABLE PIXEL-PERFECT HORIZONTAL CAPSULE DOCK INJECTOR
+    st.html("""
+    <div style="background-color:#0d0e12; padding:10px; font-family:sans-serif; width:100%; box-sizing:border-box; position:fixed; bottom:20px; left:0; right:0; z-index:999999;">
+        <div style="display:flex; align-items:center; background-color:#1e202a; border-radius:30px; border:1px solid #2e3244; padding:6px 12px; gap:10px; max-width:500px; margin:0 auto; width:90%;">
+            <button type="button" onclick="alert('Image handler ready.')" style="background-color:#2e3244; color:#9ca3af; border:none; border-radius:50%; width:36px; height:36px; min-width:36px; font-size:20px; font-weight:bold; cursor:pointer; display:flex; align-items:center; justify-content:center; padding:0; outline:none;">+</button>
+            <input type="text" id="pill_prompt_input" placeholder="Send" style="background-color:transparent; color:white; border:none; width:100%; height:36px; font-size:15px; outline:none; padding:0 4px;">
+            <button type="button" id="pill_send_btn" style="background-color:#2563eb; color:white; border:none; border-radius:50%; width:36px; height:36px; min-width:36px; font-size:18px; font-weight:bold; cursor:pointer; display:flex; align-items:center; justify-content:center; padding:0; outline:none;">↑</button>
+        </div>
+    </div>
+    <script>
+    document.getElementById('pill_send_btn').addEventListener('click', function() {
+        var textVal = document.getElementById('pill_prompt_input').value.trim();
+        if(textVal) {
+            window.parent.postMessage({type: 'streamlit:set_widget_value', from: 'native_sync_input', value: textVal}, '*');
+            setTimeout(function() {
+                window.parent.postMessage({type: 'streamlit:set_widget_value', from: 'native_sync_trig', value: true}, '*');
+            }, 50);
+        }
+    });
+    </script>
+    """)
+    
+    user_input = st.text_input("", key="native_sync_input")
+    execute_btn = st.checkbox("", key="native_sync_trig")
+
+    # ==========================================
+    # 🧠 BACKEND MULTI-TURN CHAT CONTEXT ROUTER
+    # ==========================================
+    if execute_btn and user_input:
+        if not st.session_state["is_premium"]: st.session_state["anonymous_clicks"] += 1
+        
+        # Append what the human just typed straight into memory
+        st.session_state["chat_history"].append({"role": "user", "text": user_input})
+        
+        client = genai.Client(api_key=st.secrets["GEMINI_KEY"])
+        TEXT_MODEL = 'gemini-1.5-flash'
+        
+        try:
+            # Reformat full running session history into Google content context structures
+            formatted_contents = []
+            for msg in st.session_state["chat_history"]:
+                role_str = "user" if msg["role"] == "user" else "model"
+                formatted_contents.append(types.Content(role=role_str, parts=[types.Part.from_text(text=msg["text"])]))
+            
+            # Send the entire thread history array down the central socket link
+            response = client.models.generate_content(model=TEXT_MODEL, contents=formatted_contents)
+            
+            # Save the models response bubble right into your memory database
+            st.session_state["chat_history"].append({"role": "model", "text": response.text})
+        except Exception as e:
+            st.session_state["chat_history"].append({"role": "model", "text": f"❌ Memory context link failure: {str(e)}"})
+            
         st.rerun()

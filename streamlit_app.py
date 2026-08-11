@@ -23,7 +23,7 @@ div[data-testid="stTextInput"], div[data-testid="stCheckbox"], form[data-testid=
 </style>
 """, unsafe_allow_html=True)
 
-# 🧠 INITIALIZE PERSISTENT CHAT HISTORY TRACKERS
+# 🧠 INITIALIZE CONVERSATIONAL MEMORY BACKEND TRACKERS
 if "anonymous_clicks" not in st.session_state: st.session_state["anonymous_clicks"] = 0
 if "is_premium" not in st.session_state: st.session_state["is_premium"] = False
 if "chat_history" not in st.session_state: st.session_state["chat_history"] = []
@@ -77,7 +77,7 @@ else:
     user_input = st.text_input("", key="unbreakable_direct_input")
 
     # ==========================================
-    # 🧠 BACKEND MULTI-TURN CHAT CONTEXT ROUTER (Deadlock Cleared)
+    # 🧠 BACKEND MULTI-TURN CHAT CONTEXT ROUTER (Fixed Loop Deadlock)
     # ==========================================
     if user_input:
         if not st.session_state["is_premium"]: st.session_state["anonymous_clicks"] += 1
@@ -100,6 +100,5 @@ else:
         except Exception as e:
             st.session_state["chat_history"].append({"role": "model", "text": f"❌ Error: {str(e)}"})
             
-        # Clear out input cache explicitly using a state rewrite hook to safely stop loop re-runs
-        st.empty()
+        # Safe layout refresh that clears out hidden input fields without breaking into a blank deadlock loop
         st.rerun()

@@ -22,7 +22,8 @@ h1 { color: #f3f4f6 !important; font-family: 'Inter', sans-serif; text-align: ce
     background-color: #1e202a !important;
     border-radius: 30px !important;
     border: 1px solid #2e3244 !important;
-    padding: 2px 4px !important;
+    padding: 2px 4px 2px 45px !important; /* Left padding makes room for our button */
+    position: relative !important;
 }
 .stChatInput div { background-color: transparent !important; border: none !important; }
 .stChatInput textarea { color: white !important; font-size: 15px !important; }
@@ -35,14 +36,30 @@ h1 { color: #f3f4f6 !important; font-family: 'Inter', sans-serif; text-align: ce
 }
 .stChatInput button:hover { background-color: #be654e !important; }
 
-/* Making the secondary image upload popover look clean and minimal */
+/* THE CRITICAL DESIGN FIX: Moving the dropdown inside the search bar capsule */
+div[data-testid="stPopover"] {
+    position: absolute !important;
+    left: 10px !important;
+    bottom: 8px !important;
+    z-index: 999999 !important;
+}
+
+/* Forcing the popover trigger to turn into a tight clean plus sign circular button */
 div[data-testid="stPopover"] > button {
-    background-color: #1e202a !important;
+    background-color: #2e3244 !important;
     color: #9ca3af !important;
-    border: 1px solid #2e3244 !important;
-    border-radius: 20px !important;
-    font-size: 14px !important;
-    width: 100% !important;
+    border: none !important;
+    border-radius: 50% !important;
+    height: 36px !important;
+    width: 36px !important;
+    min-width: 36px !important;
+    font-size: 20px !important;
+    font-weight: bold !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    padding: 0 !important;
+    padding-bottom: 3px !important;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -96,8 +113,8 @@ else:
             
     if st.session_state["image_out"]: st.image(st.session_state["image_out"], use_container_width=True)
 
-    # UNBREAKABLE INTEGRATED INPUT HUB 
-    with st.popover("+ Add Assets & Modes"):
+    # Visual Plus Sign layout drawer triggers assets window
+    with st.popover("+"):
         uploaded_image = st.file_uploader("📎 Upload Image to Analyze", type=["png", "jpg", "jpeg"])
         audio_file = st.audio_input("🎤 Record Voice Input")
         generate_art_mode = st.checkbox("🎨 Paint AI Art Mode")
@@ -120,7 +137,7 @@ else:
         st.session_state["text_out"] = ""
         st.session_state["image_out"] = None
         
-        # CHANGED: Locked strictly to gemini-3.5-flash text model format string parameters
+        # LOCKED ENGINES: Keeping your explicit Gemini 3.5 Flash backend preference alive
         TEXT_MODEL = 'gemini-3.5-flash'
         ART_MODEL = 'imagen-3.0-generate-002'
 

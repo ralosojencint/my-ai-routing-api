@@ -6,14 +6,14 @@ from google.genai import types
 # Configure luxury full-width layout canvas
 st.set_page_config(page_title="Nexus", page_icon="✨", layout="centered")
 
-# Visual CSS styling to upgrade the interface UI and force native elements inline
+# Visual CSS styling to upgrade the interface UI and inject ALL icons inside the search bar track
 st.markdown("""
 <style>
 .stApp { background-color: #0d0e12; }
 h1 { color: #f3f4f6 !important; font-family: 'Inter', sans-serif; text-align: center; font-weight: 700; margin-top: 50px !important; margin-bottom: 25px !important;}
 
-/* HARD-FORCING EVERY CONTROL ONTO 1 SINGLE HORIZONTAL PILL CONTAINER ROW */
-[data-testid="stHorizontalBlock"] {
+/* HARD-FORCING EVERY CONTROL ONTO 1 SINGLE HORIZONTAL CHAT PILL LINE CONTAINER */
+form[data-testid="stForm"] {
     display: flex !important;
     flex-direction: row !important;
     flex-wrap: nowrap !important;
@@ -21,21 +21,36 @@ h1 { color: #f3f4f6 !important; font-family: 'Inter', sans-serif; text-align: ce
     background-color: #1e202a !important;
     border-radius: 35px !important;
     border: 1px solid #2e3244 !important;
-    padding: 6px 14px !important;
-    gap: 8px !important;
+    padding: 4px 10px !important;
+    gap: 10px !important;
     width: 100% !important;
     position: fixed !important;
-    bottom: 20px !important; /* Pins capsule flat to the absolute bottom row */
+    bottom: 20px !important; /* Pins capsule to the absolute bottom row */
     left: 50% !important;
     transform: translateX(-50%) !important;
     max-width: 90% !important;
     z-index: 99999 !important;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.5);
 }
 
-[data-testid="stHorizontalBlock"] > div { width: auto !important; padding: 0 !important; margin: 0 !important; }
-[data-testid="stHorizontalBlock"] > div:nth-child(2) { flex-grow: 2 !important; width: 100% !important; }
+/* Forcing all internal element column segments to align on 1 flat row inside the capsule bar */
+form[data-testid="stForm"] > div { width: auto !important; padding: 0 !important; margin: 0 !important; display: flex !important; align-items: center !important; }
+form[data-testid="stForm"] > div:nth-child(2) { flex-grow: 2 !important; width: 100% !important; }
 
-/* Formatting file upload block into a clean circular grey plus icon button inside the bar */
+/* Merging text inputs cleanly inside the search bar container */
+div.stTextInput { width: 100% !important; padding: 0 !important; margin: 0 !important; }
+div.stTextInput > div > div > input {
+    background-color: transparent !important;
+    color: white !important;
+    border: none !important;
+    padding-left: 5px !important;
+    height: 44px !important;
+    font-size: 15px !important;
+    outline: none !important;
+}
+div.stTextInput > div > div { border: none !important; background-color: transparent !important; box-shadow: none !important; }
+
+/* 1. Turning the upload box into a clean grey circular '+' inside the left side of the search bar */
 div[data-testid="stFileUploader"] { max-width: 38px !important; margin: 0 !important; padding: 0 !important; }
 div[data-testid="stFileUploaderDropzone"] { padding: 0 !important; background-color: transparent !important; border: none !important; }
 div[data-testid="stFileUploaderDropzone"] button {
@@ -53,12 +68,8 @@ div[data-testid="stFileUploaderDropzone"] button {
 }
 div[data-testid="stFileUploaderDropzone"] span, div[data-testid="stFileUploaderDropzone"] div { display: none !important; }
 
-/* Stripping away standard margins around text inputs inside the capsule bar */
-div.stTextInput > div > div > input { background-color: transparent !important; color: white !important; border: none !important; padding-left: 2px !important; height: 38px !important; font-size: 14px !important; }
-div.stTextInput > div > div { border: none !important; background-color: transparent !important; box-shadow: none !important; }
-
-/* Styling the orange up-arrow submit trigger capsule button */
-.send-btn-box button {
+/* 2. Your custom orange circular up arrow send button inside the far right track of the bar */
+form[data-testid="stForm"] button[type="submit"] {
     background-color: #d0755d !important;
     color: white !important;
     border-radius: 50% !important;
@@ -72,8 +83,8 @@ div.stTextInput > div > div { border: none !important; background-color: transpa
     align-items: center !important;
     justify-content: center !important;
     padding: 0 !important;
-    margin: 0 !important;
 }
+form[data-testid="stForm"] button[type="submit"]:hover { background-color: #be654e !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -93,7 +104,7 @@ st.title("✨ Nexus")
 if not st.session_state["is_premium"] and st.session_state["anonymous_clicks"] >= 3:
     st.error("🛑 Limit Reached. Upgrade to Premium for unlimited access.")
 else:
-    # 🎯 TARGET DESIGN MIDDLE VIEW CONTAINERS (Outputs freeze safely above inputs)
+    # DESIGN WORKSPACE MIDDLE OUTPUT VIEW CONTAINERS (Outputs freeze safely above inputs)
     out_holder = st.empty()
     if st.session_state["text_out"]:
         out_holder.markdown(f"### 📊 Outputs\n{st.session_state['text_out']}")
@@ -101,19 +112,17 @@ else:
     st.markdown("<br><br>", unsafe_allow_html=True)
 
     # =========================================================================================
-    # 📱 THE NATIVE HORIZONTAL PILL BAR CAPSULE (Plus, Text Bar, Orange Button ALL COMPRESSED INLINE)
+    # 📱 THE COMPACT HORIZONTAL PILL BAR DOCK (Plus, Text Bar, Orange Button ALL COMPRESSED INLINE)
     # ========================================================================================
-    # FIXED EXPICIT COUNT PARAMETER INTO GENERATION MATRIX LOOPS
-    pill_cols = st.columns(3)
-    
-    with pill_cols[0]:
+    with st.form(key="nexus_unbreakable_capsule_bar", clear_on_submit=False):
+        # Circular grey '+' button nested natively into the inside left track of the search bar container
         uploaded_image = st.file_uploader("+", type=["png", "jpg", "jpeg"], label_visibility="collapsed")
-    with pill_cols[1]:
+        
+        # Core continuous unbordered text prompt entry field
         user_input = st.text_input("", placeholder="Nexus AI", label_visibility="collapsed")
-    with pill_cols[2]:
-        st.markdown('<div class="send-btn-box">', unsafe_allow_html=True)
-        execute_btn = st.button("↑")
-        st.markdown('</div>', unsafe_allow_html=True)
+        
+        # Circular orange submit arrow button nested natively into the far right track of the search bar container
+        execute_btn = st.form_submit_button(label="↑")
 
     generate_art_mode = st.checkbox("🎨 Paint AI Art Mode")
 
@@ -132,6 +141,7 @@ else:
             client = genai.Client(api_key=api_key_str)
             text_lower = user_input.lower().strip() if user_input else ""
             
+            # CORE MODEL LAYER LOCKED TO YOUR PRECISE DIRECTION
             TEXT_MODEL = 'gemini-1.5-flash'
             ART_MODEL = 'imagen-3.0-generate-002'
 
@@ -146,6 +156,7 @@ else:
                 if len(numbers) >= 2: st.session_state["text_out"] = f"💡 Programmatic Compute:\n{numbers} + {numbers} = {numbers + numbers}"
             else:
                 try:
+                    # NATIVE MULTIMODAL EXTRACTION: Links text prompts and raw image data files cleanly with no network faults
                     if u_valid:
                         image_bytes = uploaded_image.read()
                         prompt_to_use = user_input if user_input else "Describe this image asset in deep detail."

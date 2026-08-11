@@ -7,13 +7,13 @@ import streamlit_authenticator as stauth
 
 st.set_page_config(page_title="Mobile AI Multitask Agent", page_icon="📱")
 
-# 1. NEW DATA STRUCTURE CONFIGURATION (Add more customer credentials here!)
+# 1. PREMIUM CUSTOMER CREDENTIALS CONFIGURATION
 config = {
     "credentials": {
         "usernames": {
             "admin": {
                 "name": "Premium User",
-                "password": "password123"  # Your secure login password
+                "password": "password123"  # Give this to paying clients
             }
         }
     },
@@ -76,15 +76,15 @@ elif st.session_state.get("authentication_status"):
                 return f"💡 AI Web Scraper Result:\n\n\"{page_text[:400]}...\""
             except Exception as e: return f"💡 AI Web Error:\nCould not read link: {str(e)}"
             
-        # Task 3: Official Active SDK Connection (Updated to operational model string)
+        # Task 3: Official Active SDK Connection (Fixed to Gemini 3 Family)
         else:
             try:
                 api_key_str = st.secrets["GEMINI_KEY"]
                 client = genai.Client(api_key=api_key_str)
                 
-                # FIXED MODEL PATH STRING
+                # RE-FIXED MODEL PATH STRING TO THE WORKING GENERATION
                 response = client.models.generate_content(
-                    model='gemini-2.5-flash',
+                    model='gemini-3.5-flash',
                     contents=text_input,
                 )
                 return f"🧠 Gemini AI Brain Response:\n\n{response.text}"

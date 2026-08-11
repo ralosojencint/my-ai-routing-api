@@ -6,14 +6,14 @@ from google.genai import types
 # Configure luxury full-width layout canvas
 st.set_page_config(page_title="Nexus", page_icon="✨", layout="centered")
 
-# Visual CSS layout overrides to force a true horizontal mobile pill bar container shape
+# Visual CSS styling to upgrade the interface UI and force native elements inline
 st.markdown("""
 <style>
 .stApp { background-color: #0d0e12; }
 h1 { color: #f3f4f6 !important; font-family: 'Inter', sans-serif; text-align: center; font-weight: 700; margin-top: 50px !important; margin-bottom: 25px !important;}
 
-/* FORCING NATIVE CONTROLS ONTO 1 SINGLE HORIZONTAL PILL DOCK CAPSULE */
-form[data-testid="stForm"] {
+/* HARD-FORCING EVERY CONTROL ONTO 1 SINGLE HORIZONTAL PILL CONTAINER ROW */
+[data-testid="stHorizontalBlock"] {
     display: flex !important;
     flex-direction: row !important;
     flex-wrap: nowrap !important;
@@ -21,36 +21,21 @@ form[data-testid="stForm"] {
     background-color: #1e202a !important;
     border-radius: 35px !important;
     border: 1px solid #2e3244 !important;
-    padding: 6px 12px !important;
-    gap: 10px !important;
+    padding: 6px 14px !important;
+    gap: 8px !important;
     width: 100% !important;
     position: fixed !important;
-    bottom: 20px !important; /* Locks capsule row flat to the bottom of the screen */
+    bottom: 20px !important; /* Pins capsule flat to the absolute bottom row */
     left: 50% !important;
     transform: translateX(-50%) !important;
     max-width: 90% !important;
     z-index: 99999 !important;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.5);
 }
 
-/* Ensuring all internal sub-containers strip margins and sit inline flat */
-form[data-testid="stForm"] > div { width: auto !important; padding: 0 !important; margin: 0 !important; display: flex !important; align-items: center !important; }
-form[data-testid="stForm"] > div:nth-child(2) { flex-grow: 2 !important; width: 100% !important; }
+[data-testid="stHorizontalBlock"] > div { width: auto !important; padding: 0 !important; margin: 0 !important; }
+[data-testid="stHorizontalBlock"] > div:nth-child(2) { flex-grow: 2 !important; width: 100% !important; }
 
-/* Removing clunky borders around the text bar */
-div.stTextInput { width: 100% !important; padding: 0 !important; margin: 0 !important; }
-div.stTextInput > div > div > input {
-    background-color: transparent !important;
-    color: white !important;
-    border: none !important;
-    padding-left: 5px !important;
-    height: 44px !important;
-    font-size: 15px !important;
-    outline: none !important;
-}
-div.stTextInput > div > div { border: none !important; background-color: transparent !important; box-shadow: none !important; }
-
-/* Turning the file upload block into a clean grey circular plus icon inside the bar */
+/* Formatting file upload block into a clean circular grey plus icon button inside the bar */
 div[data-testid="stFileUploader"] { max-width: 38px !important; margin: 0 !important; padding: 0 !important; }
 div[data-testid="stFileUploaderDropzone"] { padding: 0 !important; background-color: transparent !important; border: none !important; }
 div[data-testid="stFileUploaderDropzone"] button {
@@ -68,8 +53,12 @@ div[data-testid="stFileUploaderDropzone"] button {
 }
 div[data-testid="stFileUploaderDropzone"] span, div[data-testid="stFileUploaderDropzone"] div { display: none !important; }
 
-/* Custom orange arrow submit capsule button formatting inside the bar */
-form[data-testid="stForm"] button[type="submit"] {
+/* Stripping away standard margins around text inputs inside the capsule bar */
+div.stTextInput > div > div > input { background-color: transparent !important; color: white !important; border: none !important; padding-left: 2px !important; height: 38px !important; font-size: 14px !important; }
+div.stTextInput > div > div { border: none !important; background-color: transparent !important; box-shadow: none !important; }
+
+/* Styling the orange up-arrow submit trigger capsule button */
+.send-btn-box button {
     background-color: #d0755d !important;
     color: white !important;
     border-radius: 50% !important;
@@ -83,8 +72,8 @@ form[data-testid="stForm"] button[type="submit"] {
     align-items: center !important;
     justify-content: center !important;
     padding: 0 !important;
+    margin: 0 !important;
 }
-form[data-testid="stForm"] button[type="submit"]:hover { background-color: #be654e !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -104,18 +93,26 @@ st.title("✨ Nexus")
 if not st.session_state["is_premium"] and st.session_state["anonymous_clicks"] >= 3:
     st.error("🛑 Limit Reached. Upgrade to Premium for unlimited access.")
 else:
-    # DESIGN WORKSPACE MIDDLE OUTPUT VIEW CONTAINERS
+    # 🎯 TARGET DESIGN MIDDLE VIEW CONTAINERS (Outputs freeze safely above inputs)
     out_holder = st.empty()
     if st.session_state["text_out"]:
         out_holder.markdown(f"### 📊 Outputs\n{st.session_state['text_out']}")
 
+    st.markdown("<br><br>", unsafe_allow_html=True)
+
     # =========================================================================================
-    # 📱 THE COMPACT HORIZONTAL PILL BAR DOCK (Plus, Text Bar, Orange Button ALL COMPRESSED INLINE)
+    # 📱 THE NATIVE HORIZONTAL PILL BAR CAPSULE (Plus, Text Bar, Orange Button ALL COMPRESSED INLINE)
     # ========================================================================================
-    with st.form(key="nexus_unbreakable_capsule_bar", clear_on_submit=False):
+    pill_cols = st.columns()
+    
+    with pill_cols:
         uploaded_image = st.file_uploader("+", type=["png", "jpg", "jpeg"], label_visibility="collapsed")
+    with pill_cols:
         user_input = st.text_input("", placeholder="Nexus AI", label_visibility="collapsed")
-        execute_btn = st.form_submit_button(label="↑")
+    with pill_cols:
+        st.markdown('<div class="send-btn-box">', unsafe_allow_html=True)
+        execute_btn = st.button("↑")
+        st.markdown('</div>', unsafe_allow_html=True)
 
     generate_art_mode = st.checkbox("🎨 Paint AI Art Mode")
 
@@ -133,7 +130,6 @@ else:
             api_key_str = st.secrets["GEMINI_KEY"]
             client = genai.Client(api_key=api_key_str)
             text_lower = user_input.lower().strip() if user_input else ""
-            st.session_state["text_out"] = ""
             
             TEXT_MODEL = 'gemini-3.5-flash'
             ART_MODEL = 'imagen-3.0-generate-002'
@@ -155,6 +151,7 @@ else:
                         response = client.models.generate_content(model=TEXT_MODEL, contents=[types.Part.from_bytes(data=image_bytes, mime_type=uploaded_image.type), prompt_to_use])
                     else:
                         response = client.models.generate_content(model=TEXT_MODEL, contents=user_input)
+                    # Saving answer data directly inside global cache states to secure data freezing parameters
                     st.session_state["text_out"] = response.text
                 except Exception as e: st.session_state["text_out"] = f"❌ Critical Pipeline Error: {str(e)}"
         st.rerun()

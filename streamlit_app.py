@@ -1,14 +1,13 @@
 import streamlit as st
 import urllib.request
 import json
-import base64
 from bs4 import BeautifulSoup
 from google import genai
 from google.genai import types
 
 st.set_page_config(page_title="Mobile AI Multitask Agent", page_icon="📱", layout="centered")
 
-# Initialize state trackers for usage tracking and custom tiers
+# Initialize global state tracking variables
 if "anonymous_clicks" not in st.session_state:
     st.session_state["anonymous_clicks"] = 0
 if "is_premium" not in st.session_state:
@@ -16,14 +15,13 @@ if "is_premium" not in st.session_state:
 
 FREE_DAILY_LIMIT = 3
 
-# SIDEBAR MONETIZATION CONTROL PANEL
+# SIDEBAR MONETIZATION WALL
 with st.sidebar:
     st.header("👑 Member Access")
     if not st.session_state["is_premium"]:
         st.write("Status: `FREE TIER`")
-        # Enter your secret master pass key or connect a Stripe/Lemon Squeezy callback here
         pass_input = st.text_input("Unlock Premium Key Pass", type="password")
-        if pass_input == "premium123":  # Give this pass word to paying customers
+        if pass_input == "premium123":
             st.session_state["is_premium"] = True
             st.success("Premium Unlocked! Enjoy infinite queries.")
             st.rerun()
@@ -35,9 +33,9 @@ with st.sidebar:
             st.rerun()
 
 st.title("📱 Mobile AI Multitask Agent")
-st.write("Process texts, scrapers, math, custom images, and AI artwork instantly!")
+st.write("Process text instructions, live web scrapers, image reading, and AI art generation directly from one single workspace layout.")
 
-# CHECK IF ANONYMOUS VISITOR CONSUMED LIMITS
+# CHECK FREEMIUM LIMITS
 if not st.session_state["is_premium"] and st.session_state["anonymous_clicks"] >= FREE_DAILY_LIMIT:
     st.error(f"🛑 You have reached your Free Tier limit of {FREE_DAILY_LIMIT} requests for today!")
     st.info("💡 Remove limitations instantly! Upgrade to Premium for unlimited text processing, scraping, vision models, and image artwork generation.")
@@ -46,98 +44,116 @@ else:
     if not st.session_state["is_premium"]:
         st.caption(f"📊 Free Meter: Used {st.session_state['anonymous_clicks']} of your {FREE_DAILY_LIMIT} open daily actions.")
 
-    # TABS FOR CLEAN ENGINE NAVIGATION
-    tab1, tab2, tab3 = st.tabs(["💬 Text & Scraper Router", "👁️ Image Reader (Vision)", "🎨 Image Generator"])
+    # ==========================================
+    # 🎛️ THE ONE SINGLE WORKSPACE CONTAINER HOOD
+    # ==========================================
+    st.markdown("### 🛠️ Input Control Center")
+    
+    # 1. Core Text Field (Handles Questions, Scrapers, Math, and Vision Queries)
+    user_input = st.text_input("Your Text Request / Prompt", placeholder="e.g., Who is Elon Musk?, read https://example.com, or ask about your uploaded photo")
+    
+    # 2. Image Reader Input (Drop a photo here to inject vision processing)
+    uploaded_image = st.file_uploader("📸 Image Reader (Optional: Drop a photo to analyze or read text inside it)", type=["png", "jpg", "jpeg"])
+    
+    # 3. Image Generator Toggle (Check this box if you want to turn your text prompt into AI Art)
+    generate_art_mode = st.checkbox("🎨 Image Generator Mode (Check this box to turn your prompt text into AI Artwork!)")
+    
+    # THE ONE SINGLE ACTION BUTTON FOR ALL ENGINES
+    execute_btn = st.button("🚀 Execute Multitask Pipeline", type="primary")
 
-    # --- TAB 1: TEXT/MATH/SCRAPER AUTOMATION ENGINE ---
-    with tab1:
-        user_input = st.text_input("Your Command/Prompt", placeholder="e.g., read https://example.com or ask a question")
-        execute_btn = st.button("Run Action Pipeline", type="primary")
+    # ==========================================
+    # 🧠 UNIFIED BACKEND PROCESSING SYSTEM
+    # ==========================================
+    def unified_engine(text_input, img_file, art_mode_active):
+        text_lower = text_input.lower().strip()
+        api_key_str = st.secrets["GEMINI_KEY"]
+        client = genai.Client(api_key=api_key_str)
+        
+        # ACTIVE FLAGGED PRODUCTION MODEL TARGETS
+        TEXT_MODEL = 'gemini-3.5-flash'
+        ART_MODEL = 'imagen-3.0-generate-002'
 
-        def core_engine(text_input):
-            text_lower = text_input.lower().strip()
+        # ENGINE ROUTE A: AI IMAGE GENERATOR WORKFLOW
+        if art_mode_active:
+            if not text_input:
+                return "⚠️ Input Required:\nPlease describe the artwork image you want to create inside the Text Request box first."
+            try:
+                result = client.models.generate_images(
+                    model=ART_MODEL,
+                    prompt=text_input,
+                    config=dict(number_of_images=1, output_mime_type="image/jpeg")
+                )
+                # Store the image bytes directly into a special container variable to show the user
+                st.session_state["last_artwork_generated"] = result.generated_images[0].image.image_bytes
+                return "🎨 AI Image Generation Complete! Look below the box to view your artwork."
+            except Exception as e:
+                return f"🎨 Art Generation Error: {str(e)}"
+
+        # ENGINE ROUTE B: MATH COMPUTER LOGIC
+        elif "calculate" in text_lower or "math" in text_lower:
+            numbers = [int(s) for s in text_lower.split() if s.isdigit()]
+            if len(numbers) >= 2: 
+                return f"💡 AI Math Result:\n{numbers} + {numbers} = {numbers + numbers}"
+            return "💡 AI Math Error:\nPlease provide two numbers inside your prompt text."
             
-            if "calculate" in text_lower or "math" in text_lower:
-                numbers = [int(s) for s in text_lower.split() if s.isdigit()]
-                if len(numbers) >= 2: return f"💡 AI Math Result:\n{numbers} + {numbers} = {numbers + numbers}"
-                return "💡 AI Math Error:\nPlease provide two numbers."
+        # ENGINE ROUTE C: LIVE WEB SCRAPER SCANNER
+        elif "read" in text_lower or "http" in text_lower:
+            words = text_lower.split()
+            url = next((w for w in words if w.startswith("http")), None)
+            if not url: return "💡 AI Web Error:\nPlease provide a full link starting with http."
+            try:
+                req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+                html = urllib.request.urlopen(req).read()
+                page_text = ' '.join(BeautifulSoup(html, 'html.parser').get_text().split())
+                return f"💡 AI Web Scraper Result:\n\n\"{page_text[:400]}...\""
+            except Exception as e: return f"💡 AI Web Error:\nCould not read link: {str(e)}"
+            
+        # ENGINE ROUTE D: IMAGE READER (VISION / OCR TEXT EXTRACTION)
+        elif img_file is not None:
+            try:
+                image_bytes = img_file.read()
+                prompt_to_use = text_input if text_input else "Describe what you see or read any visible text within this image file in complete detail."
                 
-            elif "read" in text_lower or "http" in text_lower:
-                words = text_lower.split()
-                url = next((w for w in words if w.startswith("http")), None)
-                if not url: return "💡 AI Web Error:\nPlease provide a full link starting with http."
-                try:
-                    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-                    html = urllib.request.urlopen(req).read()
-                    page_text = ' '.join(BeautifulSoup(html, 'html.parser').get_text().split())
-                    return f"💡 AI Web Scraper Result:\n\n\"{page_text[:400]}...\""
-                except Exception as e: return f"💡 AI Web Error:\nCould not read link: {str(e)}"
+                response = client.models.generate_content(
+                    model=TEXT_MODEL,
+                    contents=[
+                        types.Part.from_bytes(data=image_bytes, mime_type=img_file.type),
+                        prompt_to_use
+                    ]
+                )
+                return f"👁️ Image Analysis Output:\n\n{response.text}"
+            except Exception as e:
+                return f"👁️ Vision Model Processing Error: {str(e)}"
+
+        # ENGINE ROUTE E: STANDARD INTELLIGENT AI ASSISTANT ANSWER
+        else:
+            if not text_input:
+                return "⚠️ System Waiting:\nPlease type an instruction or upload an item to begin processing data pipeline loops."
+            try:
+                response = client.models.generate_content(
+                    model=TEXT_MODEL,
+                    contents=text_input,
+                )
+                return f"🧠 Intelligent AI Analysis:\n\n{response.text}"
+            except Exception as e:
+                return f"💡 System Connection Warning:\nRe-establishing background token routing. Details: {str(e)}"
+
+    # TRICK SYSTEM PIPELINE ON BUTTON CLICK ACTIONS
+    if execute_btn:
+        if not st.session_state["is_premium"]:
+            st.session_state["anonymous_clicks"] += 1
+            
+        # Clear out previous art memories before running a fresh calculation loop
+        if "last_artwork_generated" in st.session_state:
+            del st.session_state["last_artwork_generated"]
+            
+        with st.spinner("Processing Application Data Pipeline..."):
+            pipeline_output = unified_engine(user_input, uploaded_image, generate_art_mode)
+            st.markdown("### 📊 AI System Output Container")
+            st.text_area("System Response Window", value=pipeline_output, height=300)
+            
+            # If an artwork string triggered successfully, display the layout canvas blocks right below the text window
+            if "last_artwork_generated" in st.session_state:
+                st.image(st.session_state["last_artwork_generated"], caption=f"Generated Prompt: {user_input}", use_container_width=True)
                 
-            else:
-                try:
-                    client = genai.Client(api_key=st.secrets["GEMINI_KEY"])
-                    response = client.models.generate_content(
-                        model='gemini-2.0-flash',
-                        contents=text_input,
-                    )
-                    return f"🧠 Gemini AI Brain Response:\n\n{response.text}"
-                except Exception as e:
-                    return f"💡 Core Error Details: {str(e)}"
-
-        if execute_btn and user_input:
-            if not st.session_state["is_premium"]:
-                st.session_state["anonymous_clicks"] += 1
-            with st.spinner("AI Processing..."):
-                result = core_engine(user_input)
-                st.text_area("System Output", value=result, height=250)
-                st.rerun()
-
-    # --- TAB 2: IMAGE READER VISION ENGINE ---
-    with tab2:
-        uploaded_image = st.file_uploader("Upload an Image to Analyze", type=["png", "jpg", "jpeg"])
-        vision_prompt = st.text_input("What do you want to ask about this image?", value="Describe what you see in this image in detail.")
-        run_vision = st.button("Analyze Uploaded Image", type="primary")
-
-        if run_vision and uploaded_image:
-            if not st.session_state["is_premium"]:
-                st.session_state["anonymous_clicks"] += 1
-            with st.spinner("Reading Image Data..."):
-                try:
-                    client = genai.Client(api_key=st.secrets["GEMINI_KEY"])
-                    image_bytes = uploaded_image.read()
-                    
-                    response = client.models.generate_content(
-                        model='gemini-2.0-flash',
-                        contents=[
-                            types.Part.from_bytes(data=image_bytes, mime_type=uploaded_image.type),
-                            vision_prompt
-                        ]
-                    )
-                    st.success("🤖 Analysis Complete:")
-                    st.write(response.text)
-                except Exception as e:
-                    st.error(f"Vision Processing Error: {str(e)}")
-                st.rerun()
-
-    # --- TAB 3: IMAGE GENERATOR ART ENGINE ---
-    with tab3:
-        art_prompt = st.text_input("Describe the image you want to create", placeholder="e.g., A cinematic shot of a neon cyber city at night")
-        generate_art = st.button("Generate AI Artwork", type="primary")
-
-        if generate_art and art_prompt:
-            if not st.session_state["is_premium"]:
-                st.session_state["anonymous_clicks"] += 1
-            with st.spinner("Generating Art via Imagen 3 Engine..."):
-                try:
-                    client = genai.Client(api_key=st.secrets["GEMINI_KEY"])
-                    result = client.models.generate_images(
-                        model='imagen-3.0-generate-002',
-                        prompt=art_prompt,
-                        config=dict(number_of_images=1, output_mime_type="image/jpeg")
-                    )
-                    for generated_image in result.generated_images:
-                        image = types.Image.from_bytes(generated_image.image.image_bytes)
-                        st.image(generated_image.image.image_bytes, caption=f"Prompt: {art_prompt}", use_container_width=True)
-                except Exception as e:
-                    st.error(f"Image Generation Error: {str(e)}")
-                st.rerun()
+            st.rerun()

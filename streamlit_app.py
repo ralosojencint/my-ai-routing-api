@@ -3,26 +3,104 @@ from bs4 import BeautifulSoup
 from google import genai
 from google.genai import types
 from fpdf import FPDF
-import streamlit.components.v1 as components
 
+# Configure luxury full-width layout canvas
 st.set_page_config(page_title="Nexus", page_icon="✨", layout="centered")
 
+# Visual CSS styling to force NATIVE components side-by-side inside the exact horizontal capsule bar
 st.markdown("""
 <style>
 .stApp { background-color: #0d0e12; }
 h1 { color: #f3f4f6 !important; font-family: 'Inter', sans-serif; text-align: center; font-weight: 700; margin-top: 40px !important;}
 .stDownloadButton>button { background-color: #10b981 !important; color: white !important; border-radius: 12px !important; font-weight: bold !important; height: 42px !important; width: 100% !important; }
-div[data-testid="stTextInput"], div[data-testid="stCheckbox"] { display: none !important; }
 
-iframe {
-    position: fixed !important;
-    bottom: 0px !important;
-    left: 0 !important;
+/* HARD-FORCING NATIVE CONTROLS ONTO 1 SINGLE HORIZONTAL CHAT PILL LINE CONTAINER */
+form[data-testid="stForm"] {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    align-items: center !important;
+    background-color: #1e202a !important;
+    border-radius: 35px !important;
+    border: 1px solid #2e3244 !important;
+    padding: 4px 10px !important;
+    gap: 10px !important;
     width: 100% !important;
-    height: 90px !important;
+    position: fixed !important;
+    bottom: 20px !important; /* Pins capsule to the absolute bottom row */
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    max-width: 90% !important;
     z-index: 99999 !important;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+}
+
+/* Forcing all internal element column segments to align on 1 flat row inside the capsule bar */
+form[data-testid="stForm"] > div { width: auto !important; padding: 0 !important; margin: 0 !important; display: flex !important; align-items: center !important; }
+form[data-testid="stForm"] > div:nth-child(2) { flex-grow: 2 !important; width: 100% !important; }
+
+/* Merging text inputs cleanly inside the search bar container */
+div.stTextInput { width: 100% !important; padding: 0 !important; margin: 0 !important; }
+div.stTextInput > div > div > input {
+    background-color: transparent !important;
+    color: white !important;
+    border: none !important;
+    padding-left: 5px !important;
+    height: 44px !important;
+    font-size: 15px !important;
+    outline: none !important;
+}
+div.stTextInput > div > div { border: none !important; background-color: transparent !important; box-shadow: none !important; }
+
+/* 1. Turning the upload box into a clean grey circular '+' inside the left side of the search bar */
+div[data-testid="stFileUploader"] { max-width: 38px !important; margin: 0 !important; padding: 0 !important; }
+div[data-testid="stFileUploaderDropzone"] { padding: 0 !important; background-color: transparent !important; border: none !important; }
+div[data-testid="stFileUploaderDropzone"] button {
+    background-color: #2e3244 !important;
+    color: #9ca3af !important;
+    border-radius: 50% !important;
+    height: 36px !important;
+    width: 36px !important;
+    min-width: 36px !important;
+    font-size: 20px !important;
+    font-weight: bold !important;
+    padding: 0 !important;
+    padding-bottom: 2px !important;
     border: none !important;
 }
+div[data-testid="stFileUploaderDropzone"] span, div[data-testid="stFileUploaderDropzone"] div { display: none !important; }
+
+/* 2. Turning the native voice mic widget into a flat circular tracker INSIDE the right side of the search bar */
+div[data-testid="stAudioInput"] { max-width: 38px !important; margin: 0 !important; padding: 0 !important; }
+div[data-testid="stAudioInput"] button {
+    background-color: #2e3244 !important;
+    color: #9ca3af !important;
+    border-radius: 50% !important;
+    height: 36px !important;
+    width: 36px !important;
+    min-width: 36px !important;
+    padding: 0 !important;
+    border: none !important;
+}
+div[data-testid="stAudioInput"] span { display: none !important; }
+
+/* 3. Your custom orange circular up arrow send button inside the far right track of the bar */
+form[data-testid="stForm"] button[type="submit"] {
+    background-color: #d0755d !important;
+    color: white !important;
+    border-radius: 50% !important;
+    height: 36px !important;
+    width: 36px !important;
+    min-width: 36px !important;
+    border: none !important;
+    font-size: 16px !important;
+    font-weight: bold !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    padding: 0 !important;
+}
+form[data-testid="stForm"] button[type="submit"]:hover { background-color: #be654e !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -41,10 +119,6 @@ st.title("✨ Nexus")
 if not st.session_state["is_premium"] and st.session_state["anonymous_clicks"] >= 3:
     st.error("🛑 Limit Reached. Upgrade to Premium for unlimited access.")
 else:
-    # AUTOMATICALLY CAPTURE INCOMING TEXT PACKETS FROM THE QUERY ADDRESS STRING
-    query_params = st.query_params
-    user_input = query_params.get("q", None)
-    
     out_holder, pdf_holder = st.empty(), st.empty()
     if st.session_state["text_out"]:
         out_holder.markdown(f"### 📊 Outputs\n{st.session_state['text_out']}")
@@ -56,69 +130,54 @@ else:
             pdf_holder.download_button(label="📥 Download PDF", data=bytes(pdf.output()), file_name="report.pdf", mime="application/pdf")
         except Exception: pass
 
-    # THE BRIDGED PILL BAR COMPONENT LAYER (Fixed message payload transmission triggers)
-    chat_bar_html = f"""
-    <div style="background-color:#0d0e12; padding:10px; font-family:sans-serif; width:100%; box-sizing:border-box;">
-        <form id="cf" style="display:flex; align-items:center; background-color:#1e202a; border-radius:28px; border:1px solid #2e3244; padding:6px 12px; gap:10px; max-width:500px; margin:0 auto;">
-            <!-- NATIVE FILE SELECTOR SHORTCUTS (Kept exactly identical) -->
-            <button type="button" onclick="document.getElementById('img_file').click()" style="background-color:#2e3244; color:white; border:none; border-radius:50%; width:36px; height:36px; font-size:20px; font-weight:bold; cursor:pointer;">+</button>
-            <input type="file" id="img_file" style="display:none;" onchange="alert('Image attached successfully!')">
-            
-            <input type="text" id="pi" value="{user_input if user_input else ''}" placeholder="Nexus AI" style="background-color:transparent; color:white; border:none; width:100%; height:36px; font-size:15px; outline:none;">
-            
-            <!-- REAL LIVE VOICE MICROPHONE SYNC TRICK -->
-            <button type="button" onclick="startMicRecording()" style="background-color:transparent; color:#9ca3af; border:none; font-size:18px; cursor:pointer; width:30px; height:30px; outline:none;">🎙️</button>
-            
-            <button type="submit" style="background-color:#d0755d; color:white; border:none; border-radius:50%; width:36px; height:36px; font-size:18px; font-weight:bold; cursor:pointer; outline:none;">↑</button>
-        </form>
-    </div>
-    <script>
-    // Embedded Audio Engine to provide a live microphone stream voice layer
-    function startMicRecording() {{
-        alert("🎤 Listening active... Speak your command.");
-        setTimeout(() => {{
-            document.getElementById('pi').value = "Tell me about Jeff Bezos";
-            alert("🎙️ Voice processed successfully!");
-        }}, 2000);
-    }}
+    # =========================================================================================
+    # 📱 THE NATIVE HORIZONTAL PILL BAR CAPSULE (Plus, Text Bar, Mic, Orange Button ALL COMPRESSED INLINE)
+    # ========================================================================================
+    with st.form(key="nexus_unified_capsule_bar", clear_on_submit=True):
+        uploaded_image = st.file_uploader("+", type=["png", "jpg", "jpeg"], label_visibility="collapsed")
+        user_input = st.text_input("", placeholder="Nexus AI", label_visibility="collapsed")
+        audio_file = st.audio_input("", label_visibility="collapsed")
+        execute_btn = st.form_submit_button(label="↑")
 
-    document.getElementById('cf').addEventListener('submit', function(e) {{
-        e.preventDefault();
-        const val = document.getElementById('pi').value.trim();
-        if(val) {{
-            // Unbreakable address sync route: Forces background engine execution
-            const url = new URL(window.parent.location.href);
-            url.searchParams.set("q", val);
-            window.parent.location.href = url.toString();
-        }}
-    }});
-    </script>
-    """
-    components.html(chat_bar_html, height=80)
     generate_art_mode = st.checkbox("🎨 Paint AI Art Mode")
 
-    if user_input:
-        # Clear out URL parameters instantly so it doesn't run in an infinite loop on reload
-        st.query_params.clear()
+    if execute_btn:
+        u_valid = 'uploaded_image' in locals() and uploaded_image is not None
+        a_valid = 'audio_file' in locals() and audio_file is not None
+        art_valid = 'generate_art_mode' in locals() and generate_art_mode
         
-        if not st.session_state["is_premium"]: st.session_state["anonymous_clicks"] += 1
-        client = genai.Client(api_key=st.secrets["GEMINI_KEY"])
-        text_lower = user_input.lower().strip()
-        st.session_state["text_out"] = ""
-        TEXT_MODEL, ART_MODEL = 'gemini-3.5-flash', 'imagen-3.0-generate-002'
-
-        if generate_art_mode:
-            try:
-                result = client.models.generate_images(model=ART_MODEL, prompt=user_input, config=dict(number_of_images=1, output_mime_type="image/jpeg"))
-                st.image(result.generated_images.image.image_bytes, use_container_width=True)
-                st.session_state["text_out"] = "✨ AI Image Generation Complete!"
-            except Exception as e: st.session_state["text_out"] = f"❌ Art Error: {str(e)}"
-        elif "calculate" in text_lower or "math" in text_lower:
-            numbers = [int(s) for s in text_lower.split() if s.isdigit()]
-            if len(numbers) >= 2: st.session_state["text_out"] = f"💡 Result: {numbers} + {numbers} = {numbers + numbers}"
+        if not user_input and not u_valid and not a_valid:
+            st.warning("⚠️ Please provide an instruction text string, voice prompt, or image file.")
         else:
-            try:
-                response = client.models.generate_content(model=TEXT_MODEL, contents=user_input)
-                st.session_state["text_out"] = response.text
-            except Exception as e: st.session_state["text_out"] = f"❌ Error: {str(e)}"
-        st.rerun()
+            if not st.session_state["is_premium"]: st.session_state["anonymous_clicks"] += 1
+            api_key_str = st.secrets["GEMINI_KEY"]
+            client = genai.Client(api_key=api_key_str)
+            text_lower = user_input.lower().strip() if user_input else ""
+            st.session_state["text_out"] = ""
+            
+            TEXT_MODEL = 'gemini-1.5-flash'
+            ART_MODEL = 'imagen-3.0-generate-002'
+
+            if art_valid and user_input:
+                try:
+                    result = client.models.generate_images(model=ART_MODEL, prompt=user_input, config=dict(number_of_images=1, output_mime_type="image/jpeg"))
+                    st.image(result.generated_images.image.image_bytes, use_container_width=True)
+                    st.session_state["text_out"] = "✨ Deep creative render pipeline successful!"
+                except Exception as e: st.session_state["text_out"] = f"❌ Creative Art Engine Fault: {str(e)}"
+            elif "calculate" in text_lower or "math" in text_lower:
+                numbers = [int(s) for s in text_lower.split() if s.isdigit()]
+                if len(numbers) >= 2: st.session_state["text_out"] = f"💡 Programmatic Compute:\n{numbers} + {numbers} = {numbers + numbers}"
+            else:
+                try:
+                    if u_valid:
+                        image_bytes = uploaded_image.read()
+                        prompt_to_use = user_input if user_input else "Describe this image asset in deep detail."
+                        response = client.models.generate_content(model=TEXT_MODEL, contents=[types.Part.from_bytes(data=image_bytes, mime_type=uploaded_image.type), prompt_to_use])
+                    elif a_valid:
+                        audio_bytes = audio_file.read()
+                        response = client.models.generate_content(model=TEXT_MODEL, contents=[types.Part.from_bytes(data=audio_bytes, mime_type="audio/wav"), "Transcribe and answer this audio message."])
+                    else:
+                        response = client.models.generate_content(model=TEXT_MODEL, contents=user_input)
+                    st.session_state["text_out"] = response.text
+                except Exception as e: st.session_state["text_out"] = f"❌ Critical Pipeline Error: {str(e)}"
+            st.rerun()

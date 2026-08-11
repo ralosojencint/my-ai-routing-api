@@ -32,7 +32,7 @@ except ImportError:
 
 APP_NAME = "NEXUS AI"
 APP_VERSION = "5.0"
-GEMINI_MODEL = "gemini-2.5-flash-lite"
+GEMINI_MODEL = "gemini-3.5-flash-lite"
 
 MAX_FILE_MB = 25
 MAX_CHUNK_SIZE = 1200

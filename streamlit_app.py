@@ -2,6 +2,8 @@ import streamlit as st
 import urllib.request
 import json
 from bs4 import BeautifulSoup
+# 1. Import the official Google GenAI toolset
+from google import genai
 
 st.set_page_config(page_title="Mobile AI Multitask Agent", page_icon="📱")
 
@@ -12,13 +14,12 @@ user_input = st.text_input("Your Command", placeholder="e.g., read https://examp
 execute_btn = st.button("Execute Action", type="primary")
 
 def core_engine(text_input):
-    # CRITICAL UPDATE: Instantly converts your question to standard processing cases
     text_lower = text_input.lower().strip()
     
     # Task 1: Math Automation Engine
     if "calculate" in text_lower or "math" in text_lower:
         numbers = [int(s) for s in text_lower.split() if s.isdigit()]
-        if len(numbers) >= 2: return f"💡 AI Math Result:\n{numbers[0]} + {numbers[1]} = {numbers[0] + numbers[1]}"
+        if len(numbers) >= 2: return f"💡 AI Math Result:\n{numbers} + {numbers} = {numbers + numbers}"
         return "💡 AI Math Error:\nPlease provide two numbers."
         
     # Task 2: Live Web Scraper Engine
@@ -33,24 +34,21 @@ def core_engine(text_input):
             return f"💡 AI Web Scraper Result:\n\n\"{page_text[:400]}...\""
         except Exception as e: return f"💡 AI Web Error:\nCould not read link: {str(e)}"
         
-    # Task 3: Official Google Gemini Connection 
+    # Task 3: Official SDK Connection (Bypasses Python Network Blocks)
     else:
         try:
-            gemini_key = st.secrets["GEMINI_KEY"]
-            url = f"https://googleapis.com{gemini_key}"
+            # Pull key securely out of Streamlit's secrets manager
+            api_key_str = st.secrets["GEMINI_KEY"]
             
-            # Formatting payload matching Google's direct JSON ingest parameters
-            payload = {"contents": [{"parts": [{"text": text_input}]}]}
-            data = json.dumps(payload).encode("utf-8")
-            
-            req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
-            response = urllib.request.urlopen(req).read().decode("utf-8")
-            res_json = json.loads(response)
-            
-            ai_text = res_json['candidates'][0]['content']['parts'][0]['text']
-            return f"🧠 Gemini AI Brain Response:\n\n{ai_text}"
+            # Start Google Client with your authorized key credentials
+            client = genai.Client(api_key=api_key_str)
+            response = client.models.generate_content(
+                model='gemini-1.5-flash',
+                contents=text_input,
+            )
+            return f"🧠 Gemini AI Brain Response:\n\n{response.text}"
         except Exception as e:
-            return f"💡 Gemini Connection Notification:\n\nYour code and key layout are secure. The cloud server encountered a network timeout packet handshake. Please tap 'Execute Action' once more to trigger the response loop! (Error: {str(e)})"
+            return f"💡 AI Brain Configuration Required:\n\nConnection refresh in progress. Details: {str(e)}"
 
 if execute_btn and user_input:
     with st.spinner("AI Processing..."):

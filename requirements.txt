@@ -1,6 +1,5 @@
 streamlit
-groq
+requests
 openai
-reportlab
 pypdf
-Pillow
+reportlab

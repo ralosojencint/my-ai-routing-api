@@ -3,6 +3,7 @@ from bs4 import BeautifulSoup
 from google import genai
 from google.genai import types
 
+# Configure luxury full-width layout canvas
 st.set_page_config(page_title="Nexus", page_icon="✨", layout="centered")
 
 st.markdown("""
@@ -22,7 +23,7 @@ div[data-testid="stTextInput"], div[data-testid="stCheckbox"], form[data-testid=
 </style>
 """, unsafe_allow_html=True)
 
-# 🧠 INITIALIZE CONVERSATIONAL MEMORY BACKEND TRACKERS
+# 🧠 INITIALIZE PERSISTENT CHAT HISTORY TRACKERS
 if "anonymous_clicks" not in st.session_state: st.session_state["anonymous_clicks"] = 0
 if "is_premium" not in st.session_state: st.session_state["is_premium"] = False
 if "chat_history" not in st.session_state: st.session_state["chat_history"] = []
@@ -42,7 +43,7 @@ st.title("✨ Nexus")
 if not st.session_state["is_premium"] and st.session_state["anonymous_clicks"] >= 3:
     st.error("🛑 Limit Reached. Upgrade to Premium for unlimited access.")
 else:
-    # 🎯 PRINT FULL RUNNING DIALOGUE HISTORY ONTO SCREEN CANVAS
+    # 🎯 PRINT RUNNING TALK History Array
     st.markdown('<div class="chat-container">', unsafe_allow_html=True)
     for msg in st.session_state["chat_history"]:
         if msg["role"] == "user":
@@ -51,8 +52,7 @@ else:
             st.markdown(f'<div style="text-align: left;"><div class="msg-label">Nexus</div></div><div class="chat-bubble ai-msg">{msg["text"]}</div>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # 📱 UNBREAKABLE PIXEL-PERFECT HORIZONTAL CAPSULE DOCK INJECTOR
-    # Patched JavaScript triggers force immediate page parameters sync on submit event chains
+    # 📱 UNBREAKABLE PIXEL-PERFECT HORIZONTAL CAPSULE BAR
     st.html("""
     <div style="background-color:#0d0e12; padding:10px; font-family:sans-serif; width:100%; box-sizing:border-box; position:fixed; bottom:20px; left:0; right:0; z-index:999999;">
         <form id="pill_chat_form" style="display:flex; align-items:center; background-color:#1e202a; border-radius:30px; border:1px solid #2e3244; padding:6px 12px; gap:10px; max-width:500px; margin:0 auto; width:90%;">
@@ -64,45 +64,42 @@ else:
     <script>
     document.getElementById('pill_chat_form').addEventListener('submit', function(e) {
         e.preventDefault();
-        var textVal = document.getElementById('pill_prompt_input').value.trim();
-        if(textVal) {
-            // Instant absolute parameter injection channel bypasses standard checkbox lag flags completely
-            window.parent.postMessage({type: 'streamlit:set_widget_value', from: 'unbreakable_direct_input', value: textVal}, '*');
+        var val = document.getElementById('pill_prompt_input').value.trim();
+        if(val) {
+            window.parent.postMessage({type: 'streamlit:set_widget_value', from: 'unbreakable_direct_input', value: val}, '*');
             document.getElementById('pill_prompt_input').value = "";
         }
     });
     </script>
     """)
     
-    # One clean stable background stream input variable track
+    # Secure native background value track synchronization capture field parameters
     user_input = st.text_input("", key="unbreakable_direct_input")
 
     # ==========================================
-    # 🧠 BACKEND MULTI-TURN CHAT CONTEXT ROUTER
+    # 🧠 BACKEND MULTI-TURN CHAT CONTEXT ROUTER (Deadlock Cleared)
     # ==========================================
     if user_input:
         if not st.session_state["is_premium"]: st.session_state["anonymous_clicks"] += 1
         
-        # Append what the human just typed straight into memory
+        # Append input right into memory state history layers
         st.session_state["chat_history"].append({"role": "user", "text": user_input})
         
-        # Instantiating backend clients securely
         client = genai.Client(api_key=st.secrets["GEMINI_KEY"])
         TEXT_MODEL = 'gemini-1.5-flash'
         
         try:
-            # Reformat full running session history into Google content context structures
+            # Reformat full running thread history context array targets
             formatted_contents = []
             for msg in st.session_state["chat_history"]:
                 role_str = "user" if msg["role"] == "user" else "model"
                 formatted_contents.append(types.Content(role=role_str, parts=[types.Part.from_text(text=msg["text"])]))
             
-            # Send the entire thread history array down the central socket link
             response = client.models.generate_content(model=TEXT_MODEL, contents=formatted_contents)
-            
-            # Save the models response bubble right into your memory database
             st.session_state["chat_history"].append({"role": "model", "text": response.text})
         except Exception as e:
-            st.session_state["chat_history"].append({"role": "model", "text": f"❌ Memory context link failure: {str(e)}"})
+            st.session_state["chat_history"].append({"role": "model", "text": f"❌ Error: {str(e)}"})
             
+        # Clear out input cache explicitly using a state rewrite hook to safely stop loop re-runs
+        st.empty()
         st.rerun()

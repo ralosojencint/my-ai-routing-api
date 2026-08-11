@@ -52,39 +52,41 @@ else:
     st.markdown('</div>', unsafe_allow_html=True)
 
     # 📱 UNBREAKABLE PIXEL-PERFECT HORIZONTAL CAPSULE DOCK INJECTOR
+    # Patched JavaScript triggers force immediate page parameters sync on submit event chains
     st.html("""
     <div style="background-color:#0d0e12; padding:10px; font-family:sans-serif; width:100%; box-sizing:border-box; position:fixed; bottom:20px; left:0; right:0; z-index:999999;">
-        <div style="display:flex; align-items:center; background-color:#1e202a; border-radius:30px; border:1px solid #2e3244; padding:6px 12px; gap:10px; max-width:500px; margin:0 auto; width:90%;">
+        <form id="pill_chat_form" style="display:flex; align-items:center; background-color:#1e202a; border-radius:30px; border:1px solid #2e3244; padding:6px 12px; gap:10px; max-width:500px; margin:0 auto; width:90%;">
             <button type="button" onclick="alert('Image handler ready.')" style="background-color:#2e3244; color:#9ca3af; border:none; border-radius:50%; width:36px; height:36px; min-width:36px; font-size:20px; font-weight:bold; cursor:pointer; display:flex; align-items:center; justify-content:center; padding:0; outline:none;">+</button>
             <input type="text" id="pill_prompt_input" placeholder="Send" style="background-color:transparent; color:white; border:none; width:100%; height:36px; font-size:15px; outline:none; padding:0 4px;">
-            <button type="button" id="pill_send_btn" style="background-color:#2563eb; color:white; border:none; border-radius:50%; width:36px; height:36px; min-width:36px; font-size:18px; font-weight:bold; cursor:pointer; display:flex; align-items:center; justify-content:center; padding:0; outline:none;">↑</button>
-        </div>
+            <button type="submit" style="background-color:#2563eb; color:white; border:none; border-radius:50%; width:36px; height:36px; min-width:36px; font-size:18px; font-weight:bold; cursor:pointer; display:flex; align-items:center; justify-content:center; padding:0; outline:none;">↑</button>
+        </form>
     </div>
     <script>
-    document.getElementById('pill_send_btn').addEventListener('click', function() {
+    document.getElementById('pill_chat_form').addEventListener('submit', function(e) {
+        e.preventDefault();
         var textVal = document.getElementById('pill_prompt_input').value.trim();
         if(textVal) {
-            window.parent.postMessage({type: 'streamlit:set_widget_value', from: 'native_sync_input', value: textVal}, '*');
-            setTimeout(function() {
-                window.parent.postMessage({type: 'streamlit:set_widget_value', from: 'native_sync_trig', value: true}, '*');
-            }, 50);
+            // Instant absolute parameter injection channel bypasses standard checkbox lag flags completely
+            window.parent.postMessage({type: 'streamlit:set_widget_value', from: 'unbreakable_direct_input', value: textVal}, '*');
+            document.getElementById('pill_prompt_input').value = "";
         }
     });
     </script>
     """)
     
-    user_input = st.text_input("", key="native_sync_input")
-    execute_btn = st.checkbox("", key="native_sync_trig")
+    # One clean stable background stream input variable track
+    user_input = st.text_input("", key="unbreakable_direct_input")
 
     # ==========================================
     # 🧠 BACKEND MULTI-TURN CHAT CONTEXT ROUTER
     # ==========================================
-    if execute_btn and user_input:
+    if user_input:
         if not st.session_state["is_premium"]: st.session_state["anonymous_clicks"] += 1
         
         # Append what the human just typed straight into memory
         st.session_state["chat_history"].append({"role": "user", "text": user_input})
         
+        # Instantiating backend clients securely
         client = genai.Client(api_key=st.secrets["GEMINI_KEY"])
         TEXT_MODEL = 'gemini-1.5-flash'
         

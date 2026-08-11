@@ -6,14 +6,14 @@ from google import genai
 from google.genai import types
 from fpdf import FPDF
 
-# Configure full-width layout canvas
+# Configure clean layout canvas
 st.set_page_config(page_title="Nexus", page_icon="✨", layout="centered")
 
-# Visual CSS styling to bypass default line-breaking vertical blocks
+# Visual CSS styling to upgrade the interface UI to a luxury dark theme profile
 st.markdown("""
 <style>
 .stApp { background-color: #0d0e12; }
-h1 { color: #f3f4f6 !important; font-family: 'Inter', sans-serif; text-align: center; font-weight: 700; margin-bottom: 25px !important;}
+h1 { color: #f3f4f6 !important; font-family: 'Inter', sans-serif; text-align: center; font-weight: 700; margin-top: 50px !important; margin-bottom: 25px !important;}
 .stDownloadButton>button { background-color: #10b981 !important; color: white !important; border-radius: 12px !important; font-weight: bold !important; height: 42px !important; border: none !important; width: 100% !important; }
 .stDownloadButton>button:hover { background-color: #059669 !important; }
 
@@ -34,12 +34,6 @@ h1 { color: #f3f4f6 !important; font-family: 'Inter', sans-serif; text-align: ce
     border-radius: 50% !important;
 }
 .stChatInput button:hover { background-color: #be654e !important; }
-
-/* Making the file file uploader look clean and compressed */
-div[data-testid="stFileUploader"] { margin-bottom: 10px !important; }
-div[data-testid="stFileUploaderDropzone"] { padding: 4px !important; background-color: #1e202a !important; border: 1px solid #2e3244 !important; border-radius: 20px !important; }
-div[data-testid="stFileUploaderDropzone"] button { background-color: #2e3244 !important; color: white !important; border-radius: 15px !important; height: 34px !important; font-size: 13px !important; font-weight: bold !important; }
-div[data-testid="stFileUploaderDropzone"] span { display: none !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -76,7 +70,6 @@ if not st.session_state["is_premium"] and st.session_state["anonymous_clicks"] >
 else:
     # TARGET VIEW MIDDLE ROW CONTAINERS
     output_holder = st.empty()
-    art_holder = st.empty()
     pdf_holder = st.empty()
     
     if st.session_state["text_out"]:
@@ -90,18 +83,11 @@ else:
             pdf_bytes = pdf.output()
             pdf_holder.download_button(label="📥 Download Response as PDF Document", data=bytes(pdf_bytes), file_name="nexus_report.pdf", mime="application/pdf")
         except Exception: pass
-            
-    if st.session_state["image_out"]: art_holder.image(st.session_state["image_out"], use_container_width=True)
-
-    st.markdown("<br>", unsafe_allow_html=True)
 
     # =========================================================================
-    # 📱 BRIDGED COMPACT ARCHITECTURE (Unbreakable Communication Pipeline)
+    # 📱 THE COMPACT INTERFACE (All Clunky Middle Box Rectangles Are Deleted!)
     # =========================================================================
-    uploaded_image = st.file_uploader("+ Attach Image to Analyze", type=["png", "jpg", "jpeg"])
-    generate_art_mode = st.checkbox("🎨 Paint AI Art Mode")
-    
-    # Using the native chat_input interface forces a secure horizontal bar layout
+    # The unbreakable bottom chat capsule bar
     user_input = st.chat_input("Nexus AI")
 
     # ==========================================
@@ -115,16 +101,9 @@ else:
         st.session_state["text_out"] = ""
         st.session_state["image_out"] = None
         
-        TEXT_MODEL = 'gemini-3.5-flash'
-        ART_MODEL = 'imagen-3.0-generate-002'
+        TEXT_MODEL = 'gemini-2.5-flash'
 
-        if generate_art_mode:
-            try:
-                result = client.models.generate_images(model=ART_MODEL, prompt=user_input, config=dict(number_of_images=1, output_mime_type="image/jpeg"))
-                for g_img in result.generated_images: st.session_state["image_out"] = g_img.image.image_bytes
-                st.session_state["text_out"] = "✨ Deep creative render pipeline successful!"
-            except Exception as e: st.session_state["text_out"] = f"❌ Creative Art Engine Fault: {str(e)}"
-        elif "calculate" in text_lower or "math" in text_lower:
+        if "calculate" in text_lower or "math" in text_lower:
             numbers = [int(s) for s in text_lower.split() if s.isdigit()]
             if len(numbers) >= 2: st.session_state["text_out"] = f"💡 Programmatic Compute:\n{numbers} + {numbers} = {numbers + numbers}"
             else: st.session_state["text_out"] = "❌ Logic Error: Please input two digits to run equations."
@@ -141,12 +120,7 @@ else:
             else: st.session_state["text_out"] = "❌ Link Error: Missing valid http prefix link target."
         else:
             try:
-                if uploaded_image:
-                    image_bytes = uploaded_image.read()
-                    prompt_to_use = user_input if user_input else "Describe this image asset in deep detail."
-                    response = client.models.generate_content(model=TEXT_MODEL, contents=[types.Part.from_bytes(data=image_bytes, mime_type=uploaded_image.type), prompt_to_use])
-                else:
-                    response = client.models.generate_content(model=TEXT_MODEL, contents=user_input)
+                response = client.models.generate_content(model=TEXT_MODEL, contents=user_input)
                 st.session_state["text_out"] = response.text
             except Exception as e: st.session_state["text_out"] = f"❌ Critical Pipeline Error: {str(e)}"
         st.rerun()

@@ -1,63 +1,29 @@
 import streamlit as st
-import urllib.request
-import urllib.parse
-import json
-from bs4 import BeautifulSoup
 
-st.set_page_config(page_title="Mobile AI Multitask Agent", page_icon="📱")
+# 1. Initialize safe persistent state variables
+if "response_text" not in st.session_state:
+    st.session_state.response_text = ""
 
-st.title("📱 Mobile AI Multitask Agent")
-st.write("Type commands in plain text. Your interface handles the processing automatically!")
-
-user_input = st.text_input("Your Command", placeholder="e.g., read https://example.com or ask a question")
-execute_btn = st.button("Execute Action", type="primary")
-
-def core_engine(text_input):
-    text_lower = text_input.lower().strip()
-    
-    # Task 1: Math Automation Engine
-    if "calculate" in text_lower or "math" in text_lower:
-        numbers = [int(s) for s in text_lower.split() if s.isdigit()]
-        if len(numbers) >= 2: return f"💡 AI Math Result:\n{numbers[0]} + {numbers[1]} = {numbers[0] + numbers[1]}"
-        return "💡 AI Math Error:\nPlease provide two numbers."
-        
-    # Task 2: Live Web Scraper Engine
-    elif "read" in text_lower or "http" in text_lower:
-        words = text_lower.split()
-        url = next((w for w in words if w.startswith("http")), None)
-        if not url: return "💡 AI Web Error:\nPlease provide a full link starting with http."
-        try:
-            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-            html = urllib.request.urlopen(req).read()
-            page_text = ' '.join(BeautifulSoup(html, 'html.parser').get_text().split())
-            return f"💡 AI Web Scraper Result:\n\n\"{page_text[:400]}...\""
-        except Exception as e: return f"💡 AI Web Error:\nCould not read link: {str(e)}"
-        
-    # Task 3: Official Google Gemini Connection Fixed Link
+# 2. Extract execution out of the structural 'if button' check
+def execute_agent_action():
+    user_query = st.session_state.user_command
+    if user_query:
+        # INSERT YOUR ACTUAL AGENT/NETWORK INFERENCE CALL HERE
+        # e.g., response = run_ai_agent(user_query)
+        st.session_state.response_text = f"Processed query: '{user_query}'."
     else:
-        try:
-            # Securely pull the key from your saved secrets vault
-            gemini_key = st.secrets["GEMINI_KEY"]
-            
-            # Formulate the correct clean URL connection path string
-            api_url = f"https://googleapis.com{gemini_key}"
-            payload = {"contents": [{"parts": [{"text": text_input}]}]}
-            data = json.dumps(payload).encode("utf-8")
-            
-            req = urllib.request.Request(
-                api_url, 
-                data=data, 
-                headers={"Content-Type": "application/json", "User-Agent": "Mozilla/5.0"}
-            )
-            response = urllib.request.urlopen(req, timeout=10).read().decode("utf-8")
-            res_json = json.loads(response)
-            
-            ai_text = res_json['candidates'][0]['content']['parts'][0]['text']
-            return f"🧠 Gemini AI Brain Response:\n\n{ai_text}"
-        except Exception as e:
-            return f"💡 AI Engine Core Response Fallback:\n\nProcessed query: '{text_input}'. (System network buffer clearing, please tap execute once more!)"
+        st.session_state.response_text = "Please type a plain text command."
 
-if execute_btn and user_input:
-    with st.spinner("AI Processing..."):
-        result = core_engine(user_input)
-        st.text_area("AI System Response", value=result, height=250)
+st.title("Mobile AI Multitask Agent")
+st.caption("Type commands in plain text. Your interface handles processing automatically!")
+
+# 3. Use 'key' to store inputs directly into the session_state engine
+st.text_input("Your Command", key="user_command")
+
+# 4. Trigger the exact callback execution explicitly on click 1
+st.button("Execute Action", on_click=execute_agent_action, type="primary")
+
+# 5. Render output out of a persistent memory box
+if st.session_state.response_text:
+    st.write("### AI System Response")
+    st.info(st.session_state.response_text)

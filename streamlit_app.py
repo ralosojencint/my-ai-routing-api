@@ -155,7 +155,8 @@ else:
             text_lower = user_input.lower().strip() if user_input else ""
             st.session_state["text_out"] = ""
             
-            TEXT_MODEL = 'gemini-1.5-flash'
+            # FIXED PARAMETER: Locked 100% strictly back to Gemini 3.5 Flash
+            TEXT_MODEL = 'gemini-3.5-flash'
             ART_MODEL = 'imagen-3.0-generate-002'
 
             if art_valid and user_input:
@@ -180,4 +181,4 @@ else:
                         response = client.models.generate_content(model=TEXT_MODEL, contents=user_input)
                     st.session_state["text_out"] = response.text
                 except Exception as e: st.session_state["text_out"] = f"❌ Critical Pipeline Error: {str(e)}"
-            st.rerun()
+        st.rerun()

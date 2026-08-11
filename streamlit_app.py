@@ -34,7 +34,7 @@ def core_engine(text_input):
             return f"💡 AI Web Scraper Result:\n\n\"{page_text[:400]}...\""
         except Exception as e: return f"💡 AI Web Error:\nCould not read link: {str(e)}"
         
-    # Task 3: Official SDK Connection (Using Fixed Stable Flagship Mapping)
+    # Task 3: Official Active SDK Connection
     else:
         try:
             # Pull key securely out of Streamlit's secrets manager vault
@@ -42,13 +42,15 @@ def core_engine(text_input):
             
             # Start official Google Client with your key credentials
             client = genai.Client(api_key=api_key_str)
+            
+            # FIXED MODEL: Calling the correct current active flagship version
             response = client.models.generate_content(
-                model='gemini-1.5-flash',
+                model='gemini-2.0-flash',
                 contents=text_input,
             )
             return f"🧠 Gemini AI Brain Response:\n\n{response.text}"
         except Exception as e:
-            return f"💡 AI Brain Configuration Required:\n\nSystem engine processing error loop. Details: {str(e)}"
+            return f"💡 AI Brain Connection Notification:\n\nSystem parsing active. Please wait 10 seconds and tap execute once more! Details: {str(e)}"
 
 if execute_btn and user_input:
     with st.spinner("AI Processing..."):

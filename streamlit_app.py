@@ -13,6 +13,17 @@ st.markdown("""
 h1 { color: #f3f4f6 !important; font-family: 'Inter', sans-serif; text-align: center; font-weight: 700; margin-top: 40px !important;}
 .stDownloadButton>button { background-color: #10b981 !important; color: white !important; border-radius: 12px !important; font-weight: bold !important; height: 42px !important; width: 100% !important; }
 div[data-testid="stTextInput"], div[data-testid="stCheckbox"] { display: none !important; }
+
+/* FIXING THE HEIGHT BLOCK: Drops the whole capsule bar down to the bottom of the phone screen */
+iframe {
+    position: fixed !important;
+    bottom: 0px !important;
+    left: 0 !important;
+    width: 100% !important;
+    height: 90px !important;
+    z-index: 99999 !important;
+    border: none !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -42,9 +53,9 @@ else:
             pdf_holder.download_button(label="📥 Download PDF", data=bytes(pdf.output()), file_name="report.pdf", mime="application/pdf")
         except Exception: pass
 
-    # 📱 PIXEL-PERFECT HORIZONTAL CAPSULE INLINE CHAT BAR COMPONENT
+    # THE PILL BAR COMPONENT LAYER
     chat_bar_html = """
-    <div style="background-color:#0d0e12; padding:10px; font-family:sans-serif; position:fixed; bottom:10px; left:0; right:0; z-index:99999;">
+    <div style="background-color:#0d0e12; padding:10px; font-family:sans-serif; width:100%; box-sizing:border-box;">
         <form id="cf" style="display:flex; align-items:center; background-color:#1e202a; border-radius:28px; border:1px solid #2e3244; padding:6px 12px; gap:10px; max-width:500px; margin:0 auto;">
             <button type="button" onclick="alert('Uploader active')" style="background-color:#2e3244; color:white; border:none; border-radius:50%; width:36px; height:36px; font-size:20px; font-weight:bold; cursor:pointer;">+</button>
             <input type="text" id="pi" placeholder="Nexus AI" style="background-color:transparent; color:white; border:none; width:100%; height:36px; font-size:15px; outline:none;">
@@ -63,7 +74,7 @@ else:
     });
     </script>
     """
-    components.html(chat_bar_html, height=75)
+    components.html(chat_bar_html, height=80)
     
     user_input = st.text_input("", key="h_in")
     execute_btn = st.checkbox("", key="h_trig")

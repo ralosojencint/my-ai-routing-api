@@ -65,8 +65,8 @@ if user_input:
     st.session_state["chat_history"].append({"role": "user", "text": user_input})
     client = genai.Client(api_key=st.secrets["GEMINI_KEY"])
     
-    # 🎯 THE ABSOLUTE DEFINITIVE FIX: Using the library's built-in constant mapping object string
-    TEXT_MODEL = 'gemini-2.0-flash'
+    # 🎯 THE ABSOLUTE DEFINITIVE FIX: Using the Interactions API model path required by Google's modern SDK
+    TEXT_MODEL = 'gemini-interactions-flash'
     
     try:
         # Bundle conversational memory turns back to the structural context array

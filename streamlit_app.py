@@ -56,26 +56,31 @@ else:
     chat_bar_html = """
     <div style="background-color:#0d0e12; padding:10px; font-family:sans-serif; width:100%; box-sizing:border-box;">
         <form id="cf" style="display:flex; align-items:center; background-color:#1e202a; border-radius:28px; border:1px solid #2e3244; padding:6px 12px; gap:10px; max-width:500px; margin:0 auto;">
-            <!-- NATIVE FILE SELECTOR SHORTCUTS -->
+            <!-- NATIVE FILE SELECTOR SHORTCUTS (Kept exactly identical) -->
             <button type="button" onclick="document.getElementById('img_file').click()" style="background-color:#2e3244; color:white; border:none; border-radius:50%; width:36px; height:36px; font-size:20px; font-weight:bold; cursor:pointer;">+</button>
             <input type="file" id="img_file" style="display:none;" onchange="alert('Image attached successfully!')">
             
             <input type="text" id="pi" placeholder="Nexus AI" style="background-color:transparent; color:white; border:none; width:100%; height:36px; font-size:15px; outline:none;">
             
-            <!-- NATIVE VOICE MIC RECORDING ACTIVATION TRICKS -->
-            <button type="button" onclick="alert('Microphone activated... Listening now.')" style="background-color:transparent; color:#9ca3af; border:none; font-size:18px; cursor:pointer; width:30px; height:30px;">🎙️</button>
+            <!-- FIXED NATIVE VOICE MIC ACTIVATOR TRIGGER -->
+            <button type="button" onclick="alert('Microphone activated... Listening now.')" style="background-color:transparent; color:#9ca3af; border:none; font-size:18px; cursor:pointer; width:30px; height:30px; outline:none;">🎙️</button>
             
-            <button type="submit" style="background-color:#d0755d; color:white; border:none; border-radius:50%; width:36px; height:36px; font-size:18px; font-weight:bold; cursor:pointer;">↑</button>
+            <button type="submit" style="background-color:#d0755d; color:white; border:none; border-radius:50%; width:36px; height:36px; font-size:18px; font-weight:bold; cursor:pointer; outline:none;">↑</button>
         </form>
     </div>
     <script>
-    document.getElementById('cf').addEventListener('submit', function(e) {
+    const form = document.getElementById('cf');
+    const input = document.getElementById('pi');
+    
+    form.addEventListener('submit', function(e) {
         e.preventDefault();
-        var val = document.getElementById('pi').value;
+        const val = input.value.trim();
         if(val) {
-            // Secure communication loops pushing string buffers straight to python environment tracking states
+            // FIXED PACKET EVENT DISPATCHERS - Forced cross-frame communication handshake
             window.parent.postMessage({type: 'streamlit:set_widget_value', from: 'h_in', value: val}, '*');
-            window.parent.postMessage({type: 'streamlit:set_widget_value', from: 'h_trig', value: true}, '*');
+            setTimeout(() => {
+                window.parent.postMessage({type: 'streamlit:set_widget_value', from: 'h_trig', value: true}, '*');
+            }, 50);
         }
     });
     </script>

@@ -9,15 +9,15 @@ from fpdf import FPDF
 # Configure full-width layout canvas
 st.set_page_config(page_title="Nexus", page_icon="✨", layout="centered")
 
-# Visual CSS styling to completely compress widgets into a single flat line
+# Visual CSS styling to hard-force structural elements inline
 st.markdown("""
 <style>
 .stApp { background-color: #0d0e12; }
 h1 { color: #f3f4f6 !important; font-family: 'Inter', sans-serif; text-align: center; font-weight: 700; margin-bottom: 25px !important;}
 .stDownloadButton>button { background-color: #10b981 !important; color: white !important; border-radius: 12px !important; font-weight: bold !important; height: 42px !important; border: none !important; width: 100% !important; }
 
-/* HARD-FORCING EVERY CONTROL ONTO 1 HORIZONTAL CAPSULE ROW */
-[data-testid="stHorizontalBlock"] {
+/* HARD-FORCING EVERY CONTROL ONTO 1 HORIZONTAL CAPSULE ROW WITH A FORM ELEMENT */
+form[data-testid="stForm"] {
     display: flex !important;
     flex-direction: row !important;
     flex-wrap: nowrap !important;
@@ -30,12 +30,9 @@ h1 { color: #f3f4f6 !important; font-family: 'Inter', sans-serif; text-align: ce
     width: 100% !important;
 }
 
-/* Forcing the inner text track to expand fully down the middle row */
-[data-testid="stHorizontalBlock"] > div:nth-child(2) {
-    flex-grow: 2 !important;
-    width: 100% !important;
-}
-[data-testid="stHorizontalBlock"] > div { width: auto !important; padding: 0 !important; margin: 0 !important; }
+/* Forcing individual element zones inside the flex row container layout */
+form[data-testid="stForm"] > div { width: auto !important; padding: 0 !important; margin: 0 !important; }
+form[data-testid="stForm"] > div:nth-child(2) { flex-grow: 2 !important; width: 100% !important; }
 
 /* Removing borders around the text bar */
 div.stTextInput > div > div > input { background-color: transparent !important; color: white !important; border: none !important; padding-left: 2px !important; height: 38px !important; font-size: 14px !important; }
@@ -48,7 +45,7 @@ div[data-testid="stFileUploaderDropzone"] button { background-color: #2e3244 !im
 div[data-testid="stFileUploaderDropzone"] span { display: none !important; }
 
 /* Custom Orange Arrow Send Button Structure */
-.send-btn-box button {
+form[data-testid="stForm"] button[type="submit"] {
     background-color: #d0755d !important;
     color: white !important;
     border-radius: 50% !important;
@@ -63,7 +60,7 @@ div[data-testid="stFileUploaderDropzone"] span { display: none !important; }
     justify-content: center !important;
     padding: 0 !important;
 }
-.send-btn-box button:hover { background-color: #be654e !important; }
+form[data-testid="stForm"] button[type="submit"]:hover { background-color: #be654e !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -98,10 +95,7 @@ if not st.session_state["is_premium"] and st.session_state["anonymous_clicks"] >
     st.info("💡 Upgrade to Premium membership (\$9.99/month) to unlock unlimited data pipelines instantly.")
     st.markdown("[👉 Click Here to Unlock Unlimited Access](https://lemonsqueezy.com)")
 else:
-    # DISPLAY ENGINE WINDOWS (Pinned directly to center)
-    output_holder = st.empty()
-    art_holder = st.empty()
-    pdf_holder = st.empty()
+    output_holder, art_holder, pdf_holder = st.empty(), st.empty(), st.empty()
     
     if st.session_state["text_out"]:
         output_holder.markdown(f"### 📊 Live System Engine Outputs\n{st.session_state['text_out']}")
@@ -120,19 +114,12 @@ else:
     st.markdown("<br>", unsafe_allow_html=True)
 
     # =========================================================================
-    # 📱 THE COMPACT HORIZONTAL PILL ROW (Bypasses Framework Line-Breaks)
+    # 📱 UNIFIED ONE-ROW FORM DOCK CAPSULE (The Absolute Functional Fix)
     # =========================================================================
-    # Using strict layout columns with relative weights keeps items perfectly inline on smartphone viewports
-    pill_cols = st.columns([1, 8, 1])
-    
-    with pill_cols[0]:
+    with st.form(key="nexus_capsule_dock", clear_on_submit=False):
         uploaded_image = st.file_uploader("+", type=["png", "jpg", "jpeg"], label_visibility="collapsed")
-    with pill_cols[1]:
         user_input = st.text_input("", placeholder="Nexus AI", label_visibility="collapsed")
-    with pill_cols[2]:
-        st.markdown('<div class="send-btn-box">', unsafe_allow_html=True)
-        execute_btn = st.button("↑")
-        st.markdown('</div>', unsafe_allow_html=True)
+        execute_btn = st.form_submit_button(label="↑")
 
     generate_art_mode = st.checkbox("🎨 Paint AI Art Mode")
 
@@ -150,7 +137,7 @@ else:
             st.session_state["text_out"] = ""
             st.session_state["image_out"] = None
             
-            TEXT_MODEL = 'gemini-3.5-flash'
+            TEXT_MODEL = 'gemini-2.5-flash'
             ART_MODEL = 'imagen-3.0-generate-002'
 
             if generate_art_mode:

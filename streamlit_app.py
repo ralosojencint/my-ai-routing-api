@@ -103,13 +103,14 @@ else:
     # =========================================================================================
     # 📱 THE NATIVE HORIZONTAL PILL BAR CAPSULE (Plus, Text Bar, Orange Button ALL COMPRESSED INLINE)
     # ========================================================================================
-    pill_cols = st.columns()
+    # FIXED EXPICIT COUNT PARAMETER INTO GENERATION MATRIX LOOPS
+    pill_cols = st.columns(3)
     
-    with pill_cols:
+    with pill_cols[0]:
         uploaded_image = st.file_uploader("+", type=["png", "jpg", "jpeg"], label_visibility="collapsed")
-    with pill_cols:
+    with pill_cols[1]:
         user_input = st.text_input("", placeholder="Nexus AI", label_visibility="collapsed")
-    with pill_cols:
+    with pill_cols[2]:
         st.markdown('<div class="send-btn-box">', unsafe_allow_html=True)
         execute_btn = st.button("↑")
         st.markdown('</div>', unsafe_allow_html=True)
@@ -131,7 +132,7 @@ else:
             client = genai.Client(api_key=api_key_str)
             text_lower = user_input.lower().strip() if user_input else ""
             
-            TEXT_MODEL = 'gemini-3.5-flash'
+            TEXT_MODEL = 'gemini-1.5-flash'
             ART_MODEL = 'imagen-3.0-generate-002'
 
             if art_valid and user_input:

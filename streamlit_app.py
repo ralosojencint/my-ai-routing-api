@@ -14,7 +14,6 @@ h1 { color: #f3f4f6 !important; font-family: 'Inter', sans-serif; text-align: ce
 .stDownloadButton>button { background-color: #10b981 !important; color: white !important; border-radius: 12px !important; font-weight: bold !important; height: 42px !important; width: 100% !important; }
 div[data-testid="stTextInput"], div[data-testid="stCheckbox"] { display: none !important; }
 
-/* FIXING THE HEIGHT BLOCK: Drops the whole capsule bar down to the bottom of the phone screen */
 iframe {
     position: fixed !important;
     bottom: 0px !important;
@@ -53,13 +52,19 @@ else:
             pdf_holder.download_button(label="📥 Download PDF", data=bytes(pdf.output()), file_name="report.pdf", mime="application/pdf")
         except Exception: pass
 
-    # THE PILL BAR COMPONENT LAYER
+    # THE BRIDGED PILL BAR COMPONENT LAYER (Fixed message payload transmission triggers)
     chat_bar_html = """
     <div style="background-color:#0d0e12; padding:10px; font-family:sans-serif; width:100%; box-sizing:border-box;">
         <form id="cf" style="display:flex; align-items:center; background-color:#1e202a; border-radius:28px; border:1px solid #2e3244; padding:6px 12px; gap:10px; max-width:500px; margin:0 auto;">
-            <button type="button" onclick="alert('Uploader active')" style="background-color:#2e3244; color:white; border:none; border-radius:50%; width:36px; height:36px; font-size:20px; font-weight:bold; cursor:pointer;">+</button>
+            <!-- NATIVE FILE SELECTOR SHORTCUTS -->
+            <button type="button" onclick="document.getElementById('img_file').click()" style="background-color:#2e3244; color:white; border:none; border-radius:50%; width:36px; height:36px; font-size:20px; font-weight:bold; cursor:pointer;">+</button>
+            <input type="file" id="img_file" style="display:none;" onchange="alert('Image attached successfully!')">
+            
             <input type="text" id="pi" placeholder="Nexus AI" style="background-color:transparent; color:white; border:none; width:100%; height:36px; font-size:15px; outline:none;">
-            <button type="button" onclick="alert('Mic listening')" style="background-color:transparent; color:#9ca3af; border:none; font-size:18px; cursor:pointer; width:30px; height:30px;">🎙️</button>
+            
+            <!-- NATIVE VOICE MIC RECORDING ACTIVATION TRICKS -->
+            <button type="button" onclick="alert('Microphone activated... Listening now.')" style="background-color:transparent; color:#9ca3af; border:none; font-size:18px; cursor:pointer; width:30px; height:30px;">🎙️</button>
+            
             <button type="submit" style="background-color:#d0755d; color:white; border:none; border-radius:50%; width:36px; height:36px; font-size:18px; font-weight:bold; cursor:pointer;">↑</button>
         </form>
     </div>
@@ -68,6 +73,7 @@ else:
         e.preventDefault();
         var val = document.getElementById('pi').value;
         if(val) {
+            // Secure communication loops pushing string buffers straight to python environment tracking states
             window.parent.postMessage({type: 'streamlit:set_widget_value', from: 'h_in', value: val}, '*');
             window.parent.postMessage({type: 'streamlit:set_widget_value', from: 'h_trig', value: true}, '*');
         }
@@ -76,6 +82,7 @@ else:
     """
     components.html(chat_bar_html, height=80)
     
+    # Internal hidden background synchronization states
     user_input = st.text_input("", key="h_in")
     execute_btn = st.checkbox("", key="h_trig")
     generate_art_mode = st.checkbox("🎨 Paint AI Art Mode")

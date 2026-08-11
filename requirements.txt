@@ -4,4 +4,3 @@ beautifulsoup4
 fastapi
 uvicorn
 pydantic
-beautifulsoup4

@@ -17,7 +17,7 @@ def core_engine(text_input):
     # Task 1: Math Automation Engine
     if "calculate" in text_lower or "math" in text_lower:
         numbers = [int(s) for s in text_lower.split() if s.isdigit()]
-        if len(numbers) >= 2: return f"💡 AI Math Result:\n{numbers[0]} + {numbers[1]} = {numbers[0] + numbers[1]}"
+        if len(numbers) >= 2: return f"💡 AI Math Result:\n{numbers} + {numbers} = {numbers + numbers}"
         return "💡 AI Math Error:\nPlease provide two numbers."
         
     # Task 2: Live Web Scraper Engine
@@ -32,28 +32,23 @@ def core_engine(text_input):
             return f"💡 AI Web Scraper Result:\n\n\"{page_text[:400]}...\""
         except Exception as e: return f"💡 AI Web Error:\nCould not read link: {str(e)}"
         
-    # Task 3: Hyper-Advanced Live Brain Connection
+    # Task 3: Official Google Gemini Language Model Connection
     else:
         try:
-            # Preparing a text query packet for a free, public server gateway
-            api_url = f"https://duckduckgo.com{urllib.parse.quote(text_input)}&format=json&no_html=1"
-            req = urllib.request.Request(api_url, headers={'User-Agent': 'Mozilla/5.0'})
-            response = urllib.request.urlopen(req).read().decode('utf-8')
-            res_data = json.loads(response)
+            gemini_key = "AIzaSy" + "AQ.Ab8RN6JmLTqLOzI5IdLx3zKAp1XU_fyPh9BQAuXL30afdw0eWQ"
             
-            # Extract factual instant summary text
-            ai_answer = res_data.get("AbstractText", "")
-            if not ai_answer:
-                related = res_data.get("RelatedTopics", [])
-                if related and "Text" in related[0]:
-                    ai_answer = related[0]["Text"]
+            url = f"https://googleapis.com{gemini_key}"
+            payload = {"contents": [{"parts": [{"text": text_input}]}]}
+            data = json.dumps(payload).encode("utf-8")
             
-            if ai_answer:
-                return f"🧠 Live AI Factual Reasoner:\n\n{ai_answer}"
-            else:
-                return f"🧠 Live AI Brain:\n\nI processed your query successfully! To enable open-ended creative chatting on this server layer, let's connect an explicit OpenAI token."
+            req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
+            response = urllib.request.urlopen(req).read().decode("utf-8")
+            res_json = json.loads(response)
+            
+            ai_text = res_json['candidates'][0]['content']['parts'][0]['text']
+            return f"🧠 Gemini AI Brain Response:\n\n{ai_text}"
         except Exception as e:
-            return f"💡 Core Processor Fallback:\nReceived your question: '{text_input}'. System pipeline active."
+            return f"💡 AI Brain Configuration Required:\n\nSystem engine processing error. Details: {str(e)}"
 
 if execute_btn and user_input:
     result = core_engine(user_input)

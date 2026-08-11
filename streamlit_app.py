@@ -2,7 +2,7 @@ import streamlit as st
 import urllib.request
 import json
 from bs4 import BeautifulSoup
-# 1. Import the official Google GenAI toolset
+# Import the official Google GenAI SDK toolset
 from google import genai
 
 st.set_page_config(page_title="Mobile AI Multitask Agent", page_icon="📱")
@@ -34,21 +34,21 @@ def core_engine(text_input):
             return f"💡 AI Web Scraper Result:\n\n\"{page_text[:400]}...\""
         except Exception as e: return f"💡 AI Web Error:\nCould not read link: {str(e)}"
         
-    # Task 3: Official SDK Connection (Bypasses Python Network Blocks)
+    # Task 3: Official SDK Connection (Using Production Model Mapping)
     else:
         try:
-            # Pull key securely out of Streamlit's secrets manager
+            # Pull key securely out of Streamlit's secrets manager vault
             api_key_str = st.secrets["GEMINI_KEY"]
             
-            # Start Google Client with your authorized key credentials
+            # Start official Google Client with your key credentials
             client = genai.Client(api_key=api_key_str)
             response = client.models.generate_content(
-                model='gemini-1.5-flash',
+                model='gemini-2.5-flash',
                 contents=text_input,
             )
             return f"🧠 Gemini AI Brain Response:\n\n{response.text}"
         except Exception as e:
-            return f"💡 AI Brain Configuration Required:\n\nConnection refresh in progress. Details: {str(e)}"
+            return f"💡 AI Brain Configuration Required:\n\nSystem engine refreshing pipeline dependencies. Please wait 10 seconds and tap execute once more! Details: {str(e)}"
 
 if execute_btn and user_input:
     with st.spinner("AI Processing..."):

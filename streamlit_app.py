@@ -1,10 +1,16 @@
 import asyncio
+import ast
 import json
 import os
 import re
+import subprocess
+import sys
+import tempfile
 import time
+from collections import Counter
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import streamlit as st
 from google import genai
@@ -28,10 +34,11 @@ APP_NAME = "NEXUS"
 APP_VERSION = "7.0"
 
 MAX_FILE_MB = 25
-MAX_HISTORY = 12
 MAX_CHUNK_SIZE = 1200
 CHUNK_OVERLAP = 200
-MAX_WEB_RESULTS = 5
+MAX_RAG_RESULTS = 6
+MAX_WEB_RESULTS = 6
+MAX_HISTORY = 10
 
 
 # ============================================================
@@ -42,7 +49,7 @@ st.set_page_config(
     page_title="NEXUS",
     page_icon="✦",
     layout="wide",
-    initial_sidebar_state="collapsed",
+    initial_sidebar_state="expanded",
 )
 
 
@@ -50,18 +57,20 @@ st.set_page_config(
 # SESSION STATE
 # ============================================================
 
-defaults = {
+DEFAULTS = {
     "messages": [],
+    "memory_summary": "",
     "documents": [],
     "csv_datasets": [],
-    "sources": [],
     "agent_log": [],
+    "sources": [],
+    "last_plan": {},
     "request_count": 0,
+    "total_latency": 0.0,
     "selected_model": None,
-    "memory_summary": "",
 }
 
-for key, value in defaults.items():
+for key, value in DEFAULTS.items():
     if key not in st.session_state:
         st.session_state[key] = value
 
@@ -70,7 +79,7 @@ for key, value in defaults.items():
 # SECRETS
 # ============================================================
 
-def get_secret(name):
+def secret(name):
     value = os.getenv(name, "").strip()
 
     if value:
@@ -82,12 +91,12 @@ def get_secret(name):
         return ""
 
 
-GEMINI_API_KEY = get_secret("GEMINI_API_KEY")
-TAVILY_API_KEY = get_secret("TAVILY_API_KEY")
+GEMINI_API_KEY = secret("GEMINI_API_KEY")
+TAVILY_API_KEY = secret("TAVILY_API_KEY")
 
 
 # ============================================================
-# CLIENTS
+# GEMINI
 # ============================================================
 
 @st.cache_resource(show_spinner=False)
@@ -101,25 +110,7 @@ def get_gemini_client():
     )
 
 
-@st.cache_resource(show_spinner=False)
-def get_tavily_client():
-
-    if not TAVILY_API_KEY:
-        return None
-
-    if TavilyClient is None:
-        return None
-
-    return TavilyClient(
-        api_key=TAVILY_API_KEY
-    )
-
-
-# ============================================================
-# MODEL
-# ============================================================
-
-def discover_model():
+def discover_gemini_model():
 
     if st.session_state.selected_model:
         return st.session_state.selected_model
@@ -149,48 +140,321 @@ def discover_model():
                 ""
             )
 
-            if not name:
-                continue
-
-            name = name.replace(
-                "models/",
-                ""
-            )
-
-            available.append(name)
-
-        for candidate in preferred:
-
-            if candidate in available:
-
-                st.session_state.selected_model = candidate
-
-                return candidate
-
-        for name in available:
-
-            low = name.lower()
-
-            if (
-                "gemini" in low
-                and "embedding" not in low
-                and "image" not in low
-                and "tts" not in low
-                and "live" not in low
-            ):
-
-                st.session_state.selected_model = name
-
-                return name
+            if name:
+                available.append(
+                    name.replace(
+                        "models/",
+                        ""
+                    )
+                )
 
     except Exception:
-        pass
+
+        available = []
+
+    for candidate in preferred:
+
+        if candidate in available:
+
+            st.session_state.selected_model = candidate
+
+            return candidate
+
+    for name in available:
+
+        lower = name.lower()
+
+        if (
+            "gemini" in lower
+            and "embedding" not in lower
+            and "image" not in lower
+            and "tts" not in lower
+            and "live" not in lower
+        ):
+
+            st.session_state.selected_model = name
+
+            return name
 
     return None
 
 
+def require_model():
+
+    model = discover_gemini_model()
+
+    if not model:
+
+        raise RuntimeError(
+            "No compatible Gemini generation model "
+            "is available to this API key."
+        )
+
+    return model
+
+
 # ============================================================
-# TEXT HELPERS
+# TAVILY
+# ============================================================
+
+@st.cache_resource(show_spinner=False)
+def get_tavily_client():
+
+    if not TAVILY_API_KEY:
+        return None
+
+    if TavilyClient is None:
+        return None
+
+    return TavilyClient(
+        api_key=TAVILY_API_KEY
+    )
+
+
+# ============================================================
+# UI
+# ============================================================
+
+st.markdown(
+    """
+<style>
+
+/* ---------- GLOBAL ---------- */
+
+#MainMenu,
+footer,
+header {
+    visibility: hidden;
+}
+
+html,
+body,
+[data-testid="stAppViewContainer"] {
+    background: #0b0b0d;
+}
+
+.block-container {
+    max-width: 1050px;
+    padding-top: 1rem;
+    padding-bottom: 7rem;
+}
+
+/* ---------- TOP ---------- */
+
+.nexus-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 0 18px 0;
+}
+
+.nexus-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.nexus-logo {
+    font-size: 22px;
+    font-weight: 750;
+    letter-spacing: -0.8px;
+}
+
+.nexus-sub {
+    color: #777;
+    font-size: 12px;
+    margin-top: 2px;
+}
+
+.model-pill {
+    border: 1px solid #29292e;
+    background: #141418;
+    border-radius: 999px;
+    padding: 6px 11px;
+    font-size: 11px;
+    color: #aaa;
+}
+
+/* ---------- WELCOME ---------- */
+
+.welcome {
+    min-height: 55vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    padding: 20px;
+}
+
+.hero-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 15px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #17171c;
+    border: 1px solid #29292e;
+    font-size: 22px;
+    margin-bottom: 20px;
+}
+
+.hero-title {
+    font-size: 34px;
+    font-weight: 700;
+    letter-spacing: -1.3px;
+    margin-bottom: 8px;
+}
+
+.hero-text {
+    color: #85858c;
+    max-width: 500px;
+    font-size: 14px;
+    line-height: 1.6;
+}
+
+/* ---------- CHAT ---------- */
+
+[data-testid="stChatMessage"] {
+    background: transparent;
+    padding: 1rem 0;
+}
+
+[data-testid="stChatMessageContent"] {
+    line-height: 1.7;
+    font-size: 15px;
+}
+
+[data-testid="stChatMessageAvatar"] {
+    display: none;
+}
+
+/* ---------- INPUT ---------- */
+
+[data-testid="stChatInput"] {
+    border-radius: 18px;
+}
+
+[data-testid="stChatInput"] textarea {
+    font-size: 15px;
+}
+
+/* ---------- SIDEBAR ---------- */
+
+section[data-testid="stSidebar"] {
+    background: #09090b;
+    border-right: 1px solid #202024;
+}
+
+.sidebar-title {
+    font-size: 21px;
+    font-weight: 750;
+    letter-spacing: -0.8px;
+}
+
+.sidebar-sub {
+    color: #777;
+    font-size: 11px;
+}
+
+.sidebar-section {
+    color: #777;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    margin-top: 22px;
+    margin-bottom: 8px;
+}
+
+/* ---------- STATUS ---------- */
+
+.status-line {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 0;
+    font-size: 13px;
+    color: #bbb;
+}
+
+.dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #4caf7d;
+    display: inline-block;
+}
+
+.dot-off {
+    background: #b84b4b;
+}
+
+/* ---------- ACTIVITY ---------- */
+
+.activity-row {
+    padding: 7px 0;
+    color: #999;
+    font-size: 12px;
+    border-bottom: 1px solid #202024;
+}
+
+/* ---------- SOURCE ---------- */
+
+.source {
+    padding: 10px 0;
+    border-bottom: 1px solid #25252a;
+}
+
+.source-title {
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.source-url {
+    color: #666;
+    font-size: 10px;
+    overflow-wrap: anywhere;
+}
+
+/* ---------- BUTTONS ---------- */
+
+.stButton > button {
+    border-radius: 10px;
+    min-height: 38px;
+}
+
+/* ---------- MOBILE ---------- */
+
+@media (max-width: 700px) {
+
+    .block-container {
+        padding-left: 12px;
+        padding-right: 12px;
+    }
+
+    .hero-title {
+        font-size: 28px;
+    }
+
+    .nexus-sub {
+        display: none;
+    }
+
+    .model-pill {
+        font-size: 10px;
+    }
+
+}
+
+</style>
+""",
+    unsafe_allow_html=True
+)
+
+
+# ============================================================
+# HELPERS
 # ============================================================
 
 def normalize(text):
@@ -200,6 +464,14 @@ def normalize(text):
         " ",
         text or ""
     ).strip()
+
+
+def tokens(text):
+
+    return re.findall(
+        r"[a-zA-Z0-9_]+",
+        normalize(text).lower()
+    )
 
 
 def truncate(text, limit):
@@ -220,22 +492,10 @@ def truncate(text, limit):
 # DOCUMENTS
 # ============================================================
 
-def extract_txt(file):
-
-    raw = file.read()
-
-    try:
-        return raw.decode("utf-8")
-    except UnicodeDecodeError:
-        return raw.decode(
-            "latin-1",
-            errors="replace"
-        )
-
-
 def extract_pdf(file):
 
     if PdfReader is None:
+
         raise RuntimeError(
             "pypdf is not installed."
         )
@@ -247,20 +507,39 @@ def extract_pdf(file):
     for page in reader.pages:
 
         try:
+
             pages.append(
                 page.extract_text() or ""
             )
+
         except Exception:
+
             pass
 
     return "\n\n".join(pages)
+
+
+def extract_txt(file):
+
+    raw = file.read()
+
+    try:
+
+        return raw.decode("utf-8")
+
+    except UnicodeDecodeError:
+
+        return raw.decode(
+            "latin-1",
+            errors="replace"
+        )
 
 
 def extract_csv(file):
 
     df = pd.read_csv(file)
 
-    preview = df.head(50).to_csv(
+    preview = df.head(100).to_csv(
         index=False
     )
 
@@ -279,6 +558,10 @@ PREVIEW:
     return text, df
 
 
+# ============================================================
+# RAG
+# ============================================================
+
 def chunk_text(text):
 
     text = normalize(text)
@@ -294,10 +577,10 @@ def chunk_text(text):
             len(text)
         )
 
-        chunk = text[start:end]
+        piece = text[start:end]
 
-        if chunk:
-            chunks.append(chunk)
+        if piece:
+            chunks.append(piece)
 
         if end >= len(text):
             break
@@ -316,7 +599,7 @@ def index_document(
     text
 ):
 
-    for index, chunk in enumerate(
+    for number, piece in enumerate(
         chunk_text(text)
     ):
 
@@ -324,36 +607,37 @@ def index_document(
             {
                 "filename": filename,
                 "type": file_type,
-                "chunk": index,
-                "text": chunk,
+                "chunk": number,
+                "text": piece
             }
         )
 
 
-def search_documents(query):
+def retrieve_documents(
+    query,
+    limit=MAX_RAG_RESULTS
+):
 
     if not st.session_state.documents:
-        return ""
+        return []
 
-    query_words = set(
-        re.findall(
-            r"[a-zA-Z0-9]+",
-            query.lower()
-        )
+    query_terms = set(
+        tokens(query)
     )
 
     scored = []
 
-    for doc in st.session_state.documents:
+    for document in st.session_state.documents:
 
-        text_words = re.findall(
-            r"[a-zA-Z0-9]+",
-            doc["text"].lower()
+        counts = Counter(
+            tokens(
+                document["text"]
+            )
         )
 
         score = sum(
-            text_words.count(word)
-            for word in query_words
+            counts[token]
+            for token in query_terms
         )
 
         if score > 0:
@@ -361,7 +645,7 @@ def search_documents(query):
             scored.append(
                 (
                     score,
-                    doc
+                    document
                 )
             )
 
@@ -370,85 +654,36 @@ def search_documents(query):
         reverse=True
     )
 
-    selected = [
+    return [
         item[1]
-        for item in scored[:5]
+        for item in scored[:limit]
     ]
 
-    if not selected:
+
+def rag_context(query):
+
+    results = retrieve_documents(query)
+
+    if not results:
         return ""
 
-    result = []
+    sections = []
 
-    for doc in selected:
+    for item in results:
 
-        result.append(
+        sections.append(
             f"""
-SOURCE FILE: {doc["filename"]}
-CHUNK: {doc["chunk"]}
+FILE: {item["filename"]}
+TYPE: {item["type"]}
+CHUNK: {item["chunk"]}
 
-{doc["text"]}
+{item["text"]}
 """
         )
 
     return truncate(
-        "\n".join(result),
-        18000
-    )
-
-
-# ============================================================
-# WEB RESEARCH
-# ============================================================
-
-async def web_search(query):
-
-    client = get_tavily_client()
-
-    if client is None:
-        return []
-
-    try:
-
-        result = await asyncio.to_thread(
-            client.search,
-            query=query,
-            search_depth="basic",
-            max_results=MAX_WEB_RESULTS,
-            include_answer=True,
-        )
-
-        return result.get(
-            "results",
-            []
-        )
-
-    except Exception:
-        return []
-
-
-def should_search_web(query):
-
-    keywords = [
-        "current",
-        "today",
-        "latest",
-        "recent",
-        "news",
-        "price",
-        "bitcoin",
-        "stock",
-        "weather",
-        "live",
-        "2026",
-        "this week",
-    ]
-
-    query = query.lower()
-
-    return any(
-        word in query
-        for word in keywords
+        "\n".join(sections),
+        24000
     )
 
 
@@ -456,116 +691,276 @@ def should_search_web(query):
 # SAFETY
 # ============================================================
 
-def safety_check(query):
+def safety_agent(query):
 
-    blocked = [
-        "make a bomb",
-        "build a bomb",
-        "steal password",
-        "credential theft",
-        "ransomware",
-        "keylogger",
+    patterns = [
+        r"\bmake\s+(a\s+)?bomb\b",
+        r"\bbuild\s+(a\s+)?bomb\b",
+        r"\bransomware\b",
+        r"\bsteal\s+password",
+        r"\bcredential\s+theft\b",
+        r"\bkeylogger\b",
+        r"\bmalware\b",
     ]
 
-    query = query.lower()
+    for pattern in patterns:
 
-    for item in blocked:
+        if re.search(
+            pattern,
+            query.lower()
+        ):
 
-        if item in query:
+            return {
+                "safe": False,
+                "reason": "Potentially harmful request."
+            }
 
-            return False
-
-    return True
+    return {
+        "safe": True,
+        "reason": "No obvious high-risk request detected."
+    }
 
 
 # ============================================================
-# AI
+# WEB RESEARCH
 # ============================================================
 
-async def ask_nexus(
-    query,
-    local_context="",
-    web_results=None
-):
+async def research_agent(query):
 
-    client = get_gemini_client()
+    client = get_tavily_client()
 
     if client is None:
 
-        raise RuntimeError(
-            "GEMINI_API_KEY is missing."
+        return {
+            "available": False,
+            "results": [],
+            "answer": ""
+        }
+
+    try:
+
+        result = await asyncio.to_thread(
+            client.search,
+            query=query,
+            search_depth="advanced",
+            max_results=MAX_WEB_RESULTS,
+            include_answer=True,
+            include_raw_content=True
         )
 
-    model = discover_model()
+        sources = []
 
-    if not model:
+        for item in result.get(
+            "results",
+            []
+        ):
 
-        raise RuntimeError(
-            "No Gemini model is available."
-        )
-
-    web_context = ""
-
-    if web_results:
-
-        parts = []
-
-        for source in web_results:
-
-            parts.append(
-                f"""
-TITLE:
-{source.get("title", "")}
-
-URL:
-{source.get("url", "")}
-
-CONTENT:
-{source.get("content", "")}
-"""
+            sources.append(
+                {
+                    "title": item.get(
+                        "title",
+                        "Source"
+                    ),
+                    "url": item.get(
+                        "url",
+                        ""
+                    ),
+                    "content": truncate(
+                        item.get(
+                            "raw_content"
+                        )
+                        or item.get(
+                            "content",
+                            ""
+                        ),
+                        7000
+                    )
+                }
             )
 
-        web_context = truncate(
-            "\n".join(parts),
-            18000
+        return {
+            "available": True,
+            "answer": result.get(
+                "answer",
+                ""
+            ),
+            "results": sources
+        }
+
+    except Exception as exc:
+
+        return {
+            "available": False,
+            "results": [],
+            "error": str(exc)
+        }
+
+
+def format_research(research):
+
+    if not research:
+        return ""
+
+    parts = []
+
+    if research.get("answer"):
+
+        parts.append(
+            "WEB SUMMARY:\n"
+            + truncate(
+                research["answer"],
+                6000
+            )
         )
 
-    history = ""
+    for source in research.get(
+        "results",
+        []
+    ):
 
-    for message in st.session_state.messages[-MAX_HISTORY:]:
+        parts.append(
+            f"""
+TITLE:
+{source["title"]}
 
-        history += (
-            f'{message["role"].upper()}: '
-            f'{message["content"]}\n'
+URL:
+{source["url"]}
+
+CONTENT:
+{source["content"]}
+"""
         )
+
+    return truncate(
+        "\n".join(parts),
+        26000
+    )
+
+
+# ============================================================
+# DATA
+# ============================================================
+
+def data_agent():
+
+    datasets = st.session_state.csv_datasets
+
+    if not datasets:
+
+        return {
+            "available": False,
+            "datasets": []
+        }
+
+    output = []
+
+    for dataset in datasets:
+
+        df = dataset["data"]
+
+        numeric = list(
+            df.select_dtypes(
+                include=np.number
+            ).columns
+        )
+
+        item = {
+            "file": dataset["name"],
+            "rows": len(df),
+            "columns": list(
+                map(
+                    str,
+                    df.columns
+                )
+            ),
+            "numeric_columns": list(
+                map(
+                    str,
+                    numeric
+                )
+            )
+        }
+
+        if numeric:
+
+            item["statistics"] = (
+                df[numeric]
+                .describe()
+                .round(4)
+                .to_dict()
+            )
+
+        item["missing_values"] = {
+            str(column): int(value)
+            for column, value
+            in df.isna().sum().items()
+            if int(value) > 0
+        }
+
+        output.append(item)
+
+    return {
+        "available": True,
+        "datasets": output
+    }
+
+
+# ============================================================
+# REASONING
+# ============================================================
+
+async def reasoning_agent(
+    query,
+    safety,
+    research,
+    data,
+    local_context
+):
+
+    client = get_gemini_client()
+    model = require_model()
+
+    recent = st.session_state.messages[-MAX_HISTORY:]
+
+    conversation = "\n".join(
+        f"{m['role']}: {m['content']}"
+        for m in recent
+    )
 
     prompt = f"""
-You are NEXUS, a modern AI assistant for research,
-analysis, reasoning, and productivity.
+You are NEXUS, an AI assistant.
 
-Answer the user's question clearly and naturally.
+Answer the user's request directly and accurately.
 
 USER:
 {query}
 
-LOCAL KNOWLEDGE:
-{local_context}
+SAFETY:
+{json.dumps(safety, indent=2)}
 
 WEB RESEARCH:
-{web_context}
+{format_research(research)}
 
-RECENT CONVERSATION:
-{history}
+DATA:
+{json.dumps(data, indent=2)}
+
+LOCAL DOCUMENTS:
+{local_context}
+
+MEMORY:
+{st.session_state.memory_summary}
+
+RECENT CHAT:
+{conversation}
 
 Rules:
 
-- Answer directly.
-- Be accurate.
-- Do not invent facts.
-- If web information is provided, use it when relevant.
-- If information is uncertain, say so.
-- For calculations, show the calculation clearly.
-- Do not mention internal routing or implementation details.
+- Give a useful complete answer.
+- Do not mention internal implementation unless necessary.
+- Do not invent sources.
+- Clearly distinguish uncertainty.
+- Use provided research and documents when relevant.
+- For arithmetic, calculate carefully.
 """
 
     response = await asyncio.to_thread(
@@ -578,7 +973,226 @@ Rules:
 
 
 # ============================================================
-# MAIN NEXUS RUNNER
+# CODE VERIFICATION
+# ============================================================
+
+class CodeSafetyError(Exception):
+    pass
+
+
+class Validator(ast.NodeVisitor):
+
+    forbidden_nodes = (
+        ast.Import,
+        ast.ImportFrom,
+        ast.ClassDef,
+        ast.AsyncFunctionDef,
+        ast.Global,
+        ast.Nonlocal,
+    )
+
+    forbidden_names = {
+        "os",
+        "sys",
+        "subprocess",
+        "socket",
+        "shutil",
+        "requests",
+        "urllib",
+        "pathlib",
+        "pickle",
+        "importlib",
+        "__import__",
+    }
+
+    forbidden_functions = {
+        "eval",
+        "exec",
+        "compile",
+        "open",
+        "input",
+    }
+
+    def visit(self, node):
+
+        if isinstance(
+            node,
+            self.forbidden_nodes
+        ):
+
+            raise CodeSafetyError(
+                f"Forbidden syntax: "
+                f"{type(node).__name__}"
+            )
+
+        super().visit(node)
+
+    def visit_Name(self, node):
+
+        if node.id in self.forbidden_names:
+
+            raise CodeSafetyError(
+                f"Forbidden name: {node.id}"
+            )
+
+        self.generic_visit(node)
+
+    def visit_Call(self, node):
+
+        if (
+            isinstance(node.func, ast.Name)
+            and node.func.id in self.forbidden_functions
+        ):
+
+            raise CodeSafetyError(
+                f"Forbidden function: "
+                f"{node.func.id}"
+            )
+
+        self.generic_visit(node)
+
+    def visit_Attribute(self, node):
+
+        if node.attr.startswith("__"):
+
+            raise CodeSafetyError(
+                "Dunder access is forbidden."
+            )
+
+        self.generic_visit(node)
+
+
+def verify_code(code):
+
+    try:
+
+        if len(code) > 10000:
+
+            raise CodeSafetyError(
+                "Code block is too large."
+            )
+
+        tree = ast.parse(
+            code,
+            mode="exec"
+        )
+
+        Validator().visit(tree)
+
+    except Exception as exc:
+
+        return {
+            "success": False,
+            "stdout": "",
+            "stderr": str(exc)
+        }
+
+    runner = f"""
+import math
+import statistics
+import json
+
+SAFE_BUILTINS = {{
+    "abs": abs,
+    "all": all,
+    "any": any,
+    "bool": bool,
+    "dict": dict,
+    "enumerate": enumerate,
+    "float": float,
+    "int": int,
+    "len": len,
+    "list": list,
+    "max": max,
+    "min": min,
+    "print": print,
+    "range": range,
+    "round": round,
+    "set": set,
+    "sorted": sorted,
+    "str": str,
+    "sum": sum,
+    "tuple": tuple,
+    "zip": zip
+}}
+
+environment = {{
+    "__builtins__": SAFE_BUILTINS,
+    "math": math,
+    "statistics": statistics,
+    "json": json
+}}
+
+exec(
+    compile(
+        {code!r},
+        "<nexus>",
+        "exec"
+    ),
+    environment,
+    environment
+)
+"""
+
+    try:
+
+        process = subprocess.run(
+            [
+                sys.executable,
+                "-I",
+                "-S",
+                "-c",
+                runner
+            ],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            cwd=tempfile.gettempdir()
+        )
+
+        return {
+            "success":
+                process.returncode == 0,
+            "stdout":
+                truncate(
+                    process.stdout,
+                    8000
+                ),
+            "stderr":
+                truncate(
+                    process.stderr,
+                    8000
+                )
+        }
+
+    except subprocess.TimeoutExpired:
+
+        return {
+            "success": False,
+            "stdout": "",
+            "stderr": "Verification timed out."
+        }
+
+    except Exception as exc:
+
+        return {
+            "success": False,
+            "stdout": "",
+            "stderr": str(exc)
+        }
+
+
+def extract_python(text):
+
+    return re.findall(
+        r"```python\s*(.*?)```",
+        text,
+        flags=re.DOTALL | re.IGNORECASE
+    )
+
+
+# ============================================================
+# MASTER
 # ============================================================
 
 async def run_nexus(query):
@@ -587,416 +1201,206 @@ async def run_nexus(query):
 
     st.session_state.agent_log = []
 
-    if not safety_check(query):
+    # Safety
+    safety = safety_agent(query)
+
+    st.session_state.agent_log.append(
+        "Safety check complete"
+    )
+
+    if not safety["safe"]:
 
         return {
             "answer":
                 "I can't help with instructions "
                 "that facilitate harmful activity.",
             "sources": [],
+            "execution": [],
             "latency":
-                time.perf_counter() - start,
+                time.perf_counter() - start
         }
 
+    # Simple routing
+    lower = query.lower()
+
+    web_keywords = [
+        "current",
+        "today",
+        "latest",
+        "recent",
+        "news",
+        "price",
+        "stock",
+        "bitcoin",
+        "weather",
+        "live",
+        "2026"
+    ]
+
+    needs_web = bool(
+        TAVILY_API_KEY
+        and any(
+            word in lower
+            for word in web_keywords
+        )
+    )
+
+    needs_rag = bool(
+        st.session_state.documents
+    )
+
+    needs_data = bool(
+        st.session_state.csv_datasets
+    )
+
+    plan = {
+        "needs_web": needs_web,
+        "needs_rag": needs_rag,
+        "needs_data": needs_data
+    }
+
+    st.session_state.last_plan = plan
+
     st.session_state.agent_log.append(
-        "Safety check"
+        "Routing complete"
     )
 
-    local_context = search_documents(
-        query
-    )
+    # Documents
+    local_context = ""
 
-    if local_context:
+    if needs_rag:
+
+        local_context = rag_context(query)
 
         st.session_state.agent_log.append(
-            "Knowledge search"
+            "Knowledge search complete"
         )
 
-    web_results = []
+    # Web
+    research = {}
 
-    if (
-        TAVILY_API_KEY
-        and should_search_web(query)
-    ):
+    if needs_web:
 
-        web_results = await web_search(
-            query
+        research = await research_agent(query)
+
+        st.session_state.agent_log.append(
+            "Web research complete"
         )
 
-        if web_results:
+    # Data
+    data = {}
 
-            st.session_state.agent_log.append(
-                "Web research"
-            )
+    if needs_data:
 
-    answer = await ask_nexus(
+        data = data_agent()
+
+        st.session_state.agent_log.append(
+            "Data analysis complete"
+        )
+
+    # Reason
+    draft = await reasoning_agent(
         query,
-        local_context,
-        web_results
+        safety,
+        research,
+        data,
+        local_context
     )
 
     st.session_state.agent_log.append(
-        "Reasoning complete"
+        "Answer generated"
     )
 
+    # Verification
+    execution = []
+
+    code_blocks = extract_python(draft)
+
+    if code_blocks:
+
+        for code in code_blocks[:3]:
+
+            result = await asyncio.to_thread(
+                verify_code,
+                code
+            )
+
+            execution.append(
+                {
+                    "code": code,
+                    "result": result
+                }
+            )
+
+        st.session_state.agent_log.append(
+            "Calculation verification complete"
+        )
+
     return {
-        "answer": answer,
-        "sources": web_results,
+        "answer": draft,
+        "sources": research.get(
+            "results",
+            []
+        ),
+        "execution": execution,
         "latency":
-            time.perf_counter() - start,
+            time.perf_counter() - start
     }
 
 
 # ============================================================
-# CSS — NEW UI
+# MEMORY
 # ============================================================
 
-st.markdown(
-    """
-<style>
+async def compress_memory():
 
-html, body, [class*="css"] {
-    font-family:
-        Inter,
-        -apple-system,
-        BlinkMacSystemFont,
-        "Segoe UI",
-        sans-serif;
-}
+    if len(
+        st.session_state.messages
+    ) < 12:
 
-/* REMOVE STREAMLIT CHROME */
+        return
 
-#MainMenu {
-    visibility: hidden;
-}
+    client = get_gemini_client()
+    model = require_model()
 
-header {
-    visibility: hidden;
-}
+    old = st.session_state.messages[:-8]
 
-footer {
-    visibility: hidden;
-}
+    transcript = "\n".join(
+        f"{m['role']}: {m['content']}"
+        for m in old
+    )
 
+    prompt = f"""
+Create compact memory for this conversation.
 
-/* PAGE */
+Preserve:
 
-.block-container {
+- goals
+- decisions
+- important facts
+- technical context
+- unfinished work
 
-    max-width: 1050px;
+Existing memory:
+{st.session_state.memory_summary}
 
-    padding-top: 1.5rem;
-    padding-bottom: 8rem;
-}
+Conversation:
+{truncate(transcript, 14000)}
+"""
 
+    response = await asyncio.to_thread(
+        client.models.generate_content,
+        model=model,
+        contents=prompt
+    )
 
-/* SIDEBAR */
+    st.session_state.memory_summary = (
+        response.text or ""
+    )[:7000]
 
-section[data-testid="stSidebar"] {
-
-    background: rgba(15,15,18,.96);
-
-    border-right:
-        1px solid rgba(255,255,255,.07);
-}
-
-
-/* TOP BAR */
-
-.nexus-top {
-
-    display: flex;
-
-    align-items: center;
-
-    justify-content: space-between;
-
-    margin-bottom: 20px;
-}
-
-
-.nexus-logo {
-
-    font-size: 20px;
-
-    font-weight: 800;
-
-    letter-spacing: -0.8px;
-}
-
-
-.nexus-sub {
-
-    color: #777;
-
-    font-size: 12px;
-
-    margin-top: 2px;
-}
-
-
-.model-pill {
-
-    border:
-        1px solid rgba(255,255,255,.10);
-
-    background:
-        rgba(255,255,255,.035);
-
-    border-radius: 999px;
-
-    padding:
-        7px 12px;
-
-    font-size: 11px;
-
-    color: #aaa;
-}
-
-
-/* HERO */
-
-.hero {
-
-    text-align: center;
-
-    padding:
-        15vh 10px 8vh;
-}
-
-
-.hero-icon {
-
-    width: 58px;
-
-    height: 58px;
-
-    border-radius: 18px;
-
-    display: inline-flex;
-
-    align-items: center;
-
-    justify-content: center;
-
-    font-size: 26px;
-
-    background:
-        linear-gradient(
-            135deg,
-            #202027,
-            #111116
-        );
-
-    border:
-        1px solid rgba(255,255,255,.10);
-
-    box-shadow:
-        0 15px 50px
-        rgba(0,0,0,.25);
-
-    margin-bottom: 22px;
-}
-
-
-.hero-title {
-
-    font-size: 42px;
-
-    font-weight: 750;
-
-    letter-spacing: -2px;
-
-    margin-bottom: 8px;
-}
-
-
-.hero-text {
-
-    color: #777;
-
-    font-size: 15px;
-
-    max-width: 520px;
-
-    margin:
-        0 auto;
-}
-
-
-/* SUGGESTIONS */
-
-.suggestion {
-
-    border:
-        1px solid rgba(255,255,255,.08);
-
-    background:
-        rgba(255,255,255,.025);
-
-    border-radius: 15px;
-
-    padding: 14px;
-
-    color: #aaa;
-
-    font-size: 13px;
-
-    transition: .2s;
-}
-
-
-.suggestion:hover {
-
-    background:
-        rgba(255,255,255,.05);
-
-    border-color:
-        rgba(255,255,255,.15);
-}
-
-
-/* CHAT */
-
-[data-testid="stChatMessage"] {
-
-    padding-top: 1.1rem;
-
-    padding-bottom: 1.1rem;
-
-}
-
-
-[data-testid="stChatMessageContent"] {
-
-    font-size: 15px;
-
-    line-height: 1.7;
-
-}
-
-
-/* HIDE AVATARS */
-
-[data-testid="stChatMessageAvatar"] {
-
-    display: none;
-}
-
-
-/* INPUT */
-
-[data-testid="stChatInput"] {
-
-    border-radius: 20px !important;
-
-}
-
-
-[data-testid="stChatInput"] textarea {
-
-    font-size: 15px !important;
-}
-
-
-/* ACTIVITY */
-
-.activity-box {
-
-    border:
-        1px solid rgba(255,255,255,.07);
-
-    border-radius: 14px;
-
-    padding: 12px 15px;
-
-    background:
-        rgba(255,255,255,.025);
-
-    color: #999;
-
-    font-size: 12px;
-
-}
-
-
-/* SOURCE */
-
-.source-card {
-
-    padding: 12px 14px;
-
-    margin:
-        7px 0;
-
-    border-radius: 12px;
-
-    background:
-        rgba(255,255,255,.025);
-
-    border:
-        1px solid rgba(255,255,255,.07);
-}
-
-
-.source-title {
-
-    font-size: 13px;
-
-    font-weight: 600;
-}
-
-
-.source-url {
-
-    font-size: 10px;
-
-    color: #666;
-
-    overflow-wrap: anywhere;
-
-    margin-top: 3px;
-}
-
-
-/* SIDEBAR BUTTONS */
-
-.stButton > button {
-
-    border-radius: 12px;
-
-    min-height: 40px;
-}
-
-
-/* MOBILE */
-
-@media(max-width:700px) {
-
-    .hero {
-
-        padding:
-            10vh 10px 5vh;
-    }
-
-    .hero-title {
-
-        font-size: 32px;
-    }
-
-    .block-container {
-
-        padding-left: 14px;
-
-        padding-right: 14px;
-    }
-
-}
-
-</style>
-""",
-    unsafe_allow_html=True
-)
+    st.session_state.messages = (
+        st.session_state.messages[-8:]
+    )
 
 
 # ============================================================
@@ -1006,93 +1410,131 @@ section[data-testid="stSidebar"] {
 with st.sidebar:
 
     st.markdown(
-        "### ✦ NEXUS"
+        '<div class="sidebar-title">✦ NEXUS</div>',
+        unsafe_allow_html=True
     )
 
-    st.caption(
-        "AI workspace"
+    st.markdown(
+        '<div class="sidebar-sub">'
+        'Agentic workspace'
+        '</div>',
+        unsafe_allow_html=True
     )
 
-    st.divider()
+    st.write("")
 
     if st.button(
-        "＋ New conversation",
+        "＋  New conversation",
         use_container_width=True
     ):
 
         st.session_state.messages = []
-
+        st.session_state.memory_summary = ""
         st.session_state.agent_log = []
-
-        st.session_state.sources = []
+        st.session_state.last_plan = {}
 
         st.rerun()
 
-    st.divider()
-
     st.markdown(
-        "**System**"
+        '<div class="sidebar-section">SYSTEM</div>',
+        unsafe_allow_html=True
     )
 
-    model = discover_model()
+    model = None
+
+    if GEMINI_API_KEY:
+
+        try:
+            model = discover_gemini_model()
+        except Exception:
+            model = None
 
     if model:
 
-        st.success(
-            f"Gemini · {model}"
+        st.markdown(
+            f"""
+            <div class="status-line">
+                <span class="dot"></span>
+                Gemini connected
+            </div>
+            <div class="sidebar-sub">
+                {model}
+            </div>
+            """,
+            unsafe_allow_html=True
         )
 
     else:
 
-        st.error(
-            "Gemini not connected"
+        st.markdown(
+            """
+            <div class="status-line">
+                <span class="dot dot-off"></span>
+                Gemini not connected
+            </div>
+            """,
+            unsafe_allow_html=True
         )
 
     if TAVILY_API_KEY:
 
-        st.success(
-            "Web research · Available"
+        st.markdown(
+            """
+            <div class="status-line">
+                <span class="dot"></span>
+                Web research available
+            </div>
+            """,
+            unsafe_allow_html=True
         )
 
     else:
 
-        st.warning(
-            "Web research · Unavailable"
+        st.markdown(
+            """
+            <div class="status-line">
+                <span class="dot dot-off"></span>
+                Web research unavailable
+            </div>
+            """,
+            unsafe_allow_html=True
         )
 
-    st.divider()
-
     st.markdown(
-        "**Knowledge**"
+        '<div class="sidebar-section">KNOWLEDGE</div>',
+        unsafe_allow_html=True
     )
 
     uploads = st.file_uploader(
-        "Upload files",
+        "Upload documents",
         type=[
             "pdf",
             "txt",
             "csv"
         ],
-        accept_multiple_files=True
+        accept_multiple_files=True,
+        label_visibility="collapsed"
     )
 
     if uploads:
 
-        existing = {
-            doc["filename"]
-            for doc
-            in st.session_state.documents
+        loaded = {
+            item["filename"]
+            for item in st.session_state.documents
         }
 
         for uploaded in uploads:
 
-            if uploaded.name in existing:
+            if uploaded.name in loaded:
                 continue
 
-            if (
+            size_mb = (
                 uploaded.size
-                > MAX_FILE_MB * 1024 * 1024
-            ):
+                / 1024
+                / 1024
+            )
+
+            if size_mb > MAX_FILE_MB:
 
                 st.warning(
                     f"{uploaded.name} is too large."
@@ -1146,16 +1588,10 @@ with st.sidebar:
 
                     st.session_state.csv_datasets.append(
                         {
-                            "name":
-                                uploaded.name,
-                            "data":
-                                df
+                            "name": uploaded.name,
+                            "data": df
                         }
                     )
-
-                st.success(
-                    f"Added {uploaded.name}"
-                )
 
             except Exception as exc:
 
@@ -1165,7 +1601,7 @@ with st.sidebar:
 
     st.caption(
         f"{len(st.session_state.documents)} "
-        "knowledge chunks"
+        "chunks indexed"
     )
 
     if st.button(
@@ -1174,120 +1610,100 @@ with st.sidebar:
     ):
 
         st.session_state.documents = []
-
         st.session_state.csv_datasets = []
 
         st.rerun()
 
-    st.divider()
-
-    st.caption(
-        f"NEXUS v{APP_VERSION}"
+    st.markdown(
+        '<div class="sidebar-section">MEMORY</div>',
+        unsafe_allow_html=True
     )
 
+    if st.session_state.memory_summary:
+
+        with st.expander(
+            "View memory"
+        ):
+
+            st.write(
+                st.session_state.memory_summary
+            )
+
+    else:
+
+        st.caption(
+            "No saved conversation memory yet."
+        )
+
 
 # ============================================================
-# TOP BAR
+# MAIN HEADER
 # ============================================================
 
-model_display = (
+current_model = (
     st.session_state.selected_model
     or "Auto"
 )
 
 st.markdown(
     f"""
-<div class="nexus-top">
+    <div class="nexus-top">
 
-    <div>
-        <div class="nexus-logo">
-            ✦ NEXUS
+        <div class="nexus-left">
+
+            <div>
+                <div class="nexus-logo">
+                    ✦ NEXUS
+                </div>
+
+                <div class="nexus-sub">
+                    Agentic workspace
+                </div>
+            </div>
+
         </div>
 
-        <div class="nexus-sub">
-            Agentic workspace
+        <div class="model-pill">
+            {current_model}
         </div>
-    </div>
 
-    <div class="model-pill">
-        {model_display}
     </div>
-
-</div>
-""",
+    """,
     unsafe_allow_html=True
 )
 
 
 # ============================================================
-# WELCOME SCREEN
+# WELCOME
 # ============================================================
 
 if not st.session_state.messages:
 
     st.markdown(
         """
-<div class="hero">
+        <div class="welcome">
 
-    <div class="hero-icon">
-        ✦
-    </div>
+            <div class="hero-icon">
+                ✦
+            </div>
 
-    <div class="hero-title">
-        How can I help?
-    </div>
+            <div class="hero-title">
+                How can I help?
+            </div>
 
-    <div class="hero-text">
-        Research, analyze, reason, and work
-        with your knowledge using NEXUS.
-    </div>
+            <div class="hero-text">
+                Research, analyze, reason, and work
+                with your knowledge using NEXUS.
+            </div>
 
-</div>
-""",
+        </div>
+        """,
         unsafe_allow_html=True
     )
 
-    c1, c2, c3 = st.columns(3)
-
-    with c1:
-
-        st.markdown(
-            """
-<div class="suggestion">
-<b>Research</b><br>
-Find current information and sources.
-</div>
-""",
-            unsafe_allow_html=True
-        )
-
-    with c2:
-
-        st.markdown(
-            """
-<div class="suggestion">
-<b>Analyze</b><br>
-Work with documents and data.
-</div>
-""",
-            unsafe_allow_html=True
-        )
-
-    with c3:
-
-        st.markdown(
-            """
-<div class="suggestion">
-<b>Reason</b><br>
-Solve problems and explain ideas.
-</div>
-""",
-            unsafe_allow_html=True
-        )
-
 
 # ============================================================
-# CHAT HISTORY
+# CHAT
 # ============================================================
 
 for message in st.session_state.messages:
@@ -1315,10 +1731,10 @@ if st.session_state.agent_log:
 
             st.markdown(
                 f"""
-<div class="activity-box">
-    ✓ {item}
-</div>
-""",
+                <div class="activity-row">
+                    {item}
+                </div>
+                """,
                 unsafe_allow_html=True
             )
 
@@ -1333,7 +1749,7 @@ query = st.chat_input(
 
 
 # ============================================================
-# PROCESS
+# EXECUTION
 # ============================================================
 
 if query:
@@ -1341,8 +1757,7 @@ if query:
     if not GEMINI_API_KEY:
 
         st.error(
-            "GEMINI_API_KEY is missing. "
-            "Add it to Streamlit Secrets."
+            "Add GEMINI_API_KEY to Streamlit Secrets."
         )
 
         st.stop()
@@ -1360,72 +1775,138 @@ if query:
 
     with st.chat_message("assistant"):
 
-        try:
+        with st.status(
+            "Working...",
+            expanded=False
+        ) as status:
 
-            with st.spinner(
-                "NEXUS is thinking..."
-            ):
+            try:
 
                 result = asyncio.run(
                     run_nexus(query)
                 )
 
-            answer = result["answer"]
+                status.update(
+                    label="Complete",
+                    state="complete"
+                )
 
-            st.markdown(
-                answer
-            )
+            except Exception as exc:
 
-            if result["sources"]:
+                status.update(
+                    label="Request failed",
+                    state="error"
+                )
 
-                with st.expander(
-                    "Sources"
-                ):
+                st.error(
+                    f"{type(exc).__name__}: {exc}"
+                )
 
-                    for source in result["sources"]:
+                st.stop()
 
-                        title = source.get(
-                            "title",
-                            "Source"
+        final_answer = result["answer"]
+
+        st.markdown(
+            final_answer
+        )
+
+        # SOURCES
+
+        if result["sources"]:
+
+            with st.expander(
+                "Sources"
+            ):
+
+                for source in result["sources"]:
+
+                    title = source.get(
+                        "title",
+                        "Source"
+                    )
+
+                    url = source.get(
+                        "url",
+                        ""
+                    )
+
+                    st.markdown(
+                        f"""
+                        <div class="source">
+
+                            <div class="source-title">
+                                {title}
+                            </div>
+
+                            <div class="source-url">
+                                {url}
+                            </div>
+
+                        </div>
+                        """,
+                        unsafe_allow_html=True
+                    )
+
+        # VERIFICATION
+
+        if result["execution"]:
+
+            with st.expander(
+                "Verification"
+            ):
+
+                for item in result["execution"]:
+
+                    st.code(
+                        item["code"],
+                        language="python"
+                    )
+
+                    verification = item["result"]
+
+                    if verification["success"]:
+
+                        st.success(
+                            "Verification passed."
                         )
 
-                        url = source.get(
-                            "url",
-                            ""
+                    else:
+
+                        st.warning(
+                            verification["stderr"]
                         )
 
-                        st.markdown(
-                            f"""
-<div class="source-card">
+                    if verification["stdout"]:
 
-    <div class="source-title">
-        {title}
-    </div>
-
-    <div class="source-url">
-        {url}
-    </div>
-
-</div>
-""",
-                            unsafe_allow_html=True
+                        st.code(
+                            verification["stdout"]
                         )
-
-        except Exception as exc:
-
-            st.error(
-                f"{type(exc).__name__}: {exc}"
-            )
-
-            st.stop()
 
     st.session_state.messages.append(
         {
             "role": "assistant",
-            "content": answer
+            "content": final_answer
         }
     )
 
     st.session_state.request_count += 1
+
+    st.session_state.total_latency += (
+        result["latency"]
+    )
+
+    if len(
+        st.session_state.messages
+    ) >= 12:
+
+        try:
+
+            asyncio.run(
+                compress_memory()
+            )
+
+        except Exception:
+
+            pass
 
     st.rerun()

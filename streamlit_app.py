@@ -1,16 +1,10 @@
 import asyncio
-import ast
 import json
 import os
 import re
-import subprocess
-import sys
-import tempfile
 import time
-from collections import Counter
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 import streamlit as st
 from google import genai
@@ -34,11 +28,10 @@ APP_NAME = "NEXUS"
 APP_VERSION = "7.0"
 
 MAX_FILE_MB = 25
+MAX_HISTORY = 12
 MAX_CHUNK_SIZE = 1200
 CHUNK_OVERLAP = 200
-MAX_RAG_RESULTS = 6
-MAX_WEB_RESULTS = 6
-MAX_HISTORY = 10
+MAX_WEB_RESULTS = 5
 
 
 # ============================================================
@@ -49,7 +42,7 @@ st.set_page_config(
     page_title="NEXUS",
     page_icon="✦",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed",
 )
 
 
@@ -57,21 +50,18 @@ st.set_page_config(
 # SESSION STATE
 # ============================================================
 
-DEFAULTS = {
+defaults = {
     "messages": [],
-    "memory_summary": "",
     "documents": [],
     "csv_datasets": [],
-    "agent_log": [],
     "sources": [],
-    "last_plan": {},
-    "last_execution": [],
+    "agent_log": [],
     "request_count": 0,
-    "total_latency": 0.0,
     "selected_model": None,
+    "memory_summary": "",
 }
 
-for key, value in DEFAULTS.items():
+for key, value in defaults.items():
     if key not in st.session_state:
         st.session_state[key] = value
 
@@ -80,7 +70,7 @@ for key, value in DEFAULTS.items():
 # SECRETS
 # ============================================================
 
-def secret(name):
+def get_secret(name):
     value = os.getenv(name, "").strip()
 
     if value:
@@ -92,12 +82,12 @@ def secret(name):
         return ""
 
 
-GEMINI_API_KEY = secret("GEMINI_API_KEY")
-TAVILY_API_KEY = secret("TAVILY_API_KEY")
+GEMINI_API_KEY = get_secret("GEMINI_API_KEY")
+TAVILY_API_KEY = get_secret("TAVILY_API_KEY")
 
 
 # ============================================================
-# GEMINI
+# CLIENTS
 # ============================================================
 
 @st.cache_resource(show_spinner=False)
@@ -110,96 +100,6 @@ def get_gemini_client():
         api_key=GEMINI_API_KEY
     )
 
-
-def discover_gemini_model():
-
-    if st.session_state.selected_model:
-        return st.session_state.selected_model
-
-    client = get_gemini_client()
-
-    if client is None:
-        return None
-
-    preferred = [
-        "gemini-3.5-flash",
-        "gemini-3.6-flash",
-        "gemini-3.5-flash-lite",
-    ]
-
-    available = {}
-
-    try:
-
-        models = client.models.list()
-
-        for model in models:
-
-            name = getattr(
-                model,
-                "name",
-                ""
-            )
-
-            if not name:
-                continue
-
-            clean = name.replace(
-                "models/",
-                ""
-            )
-
-            available[clean] = model
-
-    except Exception:
-        available = {}
-
-    # Prefer the requested models
-    for candidate in preferred:
-
-        if candidate in available:
-
-            st.session_state.selected_model = candidate
-
-            return candidate
-
-    # Fallback
-    for name in available:
-
-        lower = name.lower()
-
-        if (
-            "gemini" in lower
-            and "embedding" not in lower
-            and "image" not in lower
-            and "tts" not in lower
-            and "live" not in lower
-        ):
-
-            st.session_state.selected_model = name
-
-            return name
-
-    return None
-
-
-def require_model():
-
-    model = discover_gemini_model()
-
-    if not model:
-
-        raise RuntimeError(
-            "No compatible Gemini generation model "
-            "is available for this API key."
-        )
-
-    return model
-
-
-# ============================================================
-# TAVILY
-# ============================================================
 
 @st.cache_resource(show_spinner=False)
 def get_tavily_client():
@@ -216,192 +116,81 @@ def get_tavily_client():
 
 
 # ============================================================
-# UI
+# MODEL
 # ============================================================
 
-st.markdown(
-    """
-<style>
+def discover_model():
 
-#MainMenu,
-footer,
-header {
-    visibility: hidden;
-}
+    if st.session_state.selected_model:
+        return st.session_state.selected_model
 
-.block-container {
-    max-width: 1150px;
-    padding-top: 2rem;
-    padding-bottom: 7rem;
-}
+    client = get_gemini_client()
 
-/* BRAND */
+    if client is None:
+        return None
 
-.nexus-brand {
-    font-size: 38px;
-    font-weight: 800;
-    letter-spacing: -2px;
-    margin-bottom: 2px;
-}
+    preferred = [
+        "gemini-3.5-flash",
+        "gemini-3.1-flash-lite",
+        "gemini-3.6-flash",
+    ]
 
-.nexus-description {
-    font-size: 14px;
-    color: #888;
-    margin-bottom: 28px;
-}
+    try:
 
-/* SIDEBAR */
+        models = client.models.list()
 
-section[data-testid="stSidebar"] {
-    border-right: 1px solid rgba(128,128,128,.15);
-}
+        available = []
 
-.sidebar-brand {
-    font-size: 25px;
-    font-weight: 800;
-    letter-spacing: -1px;
-}
+        for model in models:
 
-.sidebar-muted {
-    color: #888;
-    font-size: 12px;
-}
+            name = getattr(
+                model,
+                "name",
+                ""
+            )
 
-/* CHAT */
+            if not name:
+                continue
 
-[data-testid="stChatMessage"] {
-    padding-top: 1rem;
-    padding-bottom: 1rem;
-}
+            name = name.replace(
+                "models/",
+                ""
+            )
 
-[data-testid="stChatMessageContent"] {
-    line-height: 1.7;
-    font-size: 15px;
-}
+            available.append(name)
 
-[data-testid="stChatMessageAvatar"] {
-    display: none;
-}
+        for candidate in preferred:
 
-/* INPUT */
+            if candidate in available:
 
-[data-testid="stChatInput"] {
-    border-radius: 18px;
-}
+                st.session_state.selected_model = candidate
 
-[data-testid="stChatInput"] textarea {
-    font-size: 15px;
-}
+                return candidate
 
-/* CARDS */
+        for name in available:
 
-.status-card {
-    border: 1px solid rgba(128,128,128,.18);
-    border-radius: 16px;
-    padding: 17px 18px;
-    background: rgba(128,128,128,.035);
-    transition: .2s ease;
-}
+            low = name.lower()
 
-.status-card:hover {
-    border-color: rgba(128,128,128,.35);
-}
+            if (
+                "gemini" in low
+                and "embedding" not in low
+                and "image" not in low
+                and "tts" not in low
+                and "live" not in low
+            ):
 
-.status-label {
-    font-size: 10px;
-    color: #888;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-}
+                st.session_state.selected_model = name
 
-.status-value {
-    font-size: 15px;
-    font-weight: 650;
-    margin-top: 6px;
-}
+                return name
 
-/* DOT */
+    except Exception:
+        pass
 
-.dot {
-    display: inline-block;
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    margin-right: 7px;
-    background: #35a66f;
-}
-
-.dot-off {
-    background: #b54a4a;
-}
-
-/* SOURCES */
-
-.source {
-    border: 1px solid rgba(128,128,128,.18);
-    border-radius: 12px;
-    padding: 13px 15px;
-    margin: 8px 0;
-}
-
-.source-title {
-    font-size: 14px;
-    font-weight: 600;
-}
-
-.source-url {
-    font-size: 11px;
-    color: #888;
-    overflow-wrap: anywhere;
-}
-
-/* ACTIVITY */
-
-.agent-row {
-    padding: 9px 0;
-    font-size: 13px;
-    border-bottom: 1px solid rgba(128,128,128,.10);
-}
-
-.agent-row:last-child {
-    border-bottom: none;
-}
-
-/* BUTTONS */
-
-.stButton > button {
-    border-radius: 12px;
-    min-height: 42px;
-}
-
-/* MOBILE */
-
-@media (max-width: 700px) {
-
-    .block-container {
-        padding-left: 1rem;
-        padding-right: 1rem;
-        padding-top: 1rem;
-    }
-
-    .nexus-brand {
-        font-size: 30px;
-    }
-
-    .status-card {
-        padding: 13px;
-    }
-
-}
-
-</style>
-""",
-    unsafe_allow_html=True,
-)
+    return None
 
 
 # ============================================================
-# HELPERS
+# TEXT HELPERS
 # ============================================================
 
 def normalize(text):
@@ -409,16 +198,8 @@ def normalize(text):
     return re.sub(
         r"\s+",
         " ",
-        text or "",
+        text or ""
     ).strip()
-
-
-def tokens(text):
-
-    return re.findall(
-        r"[a-zA-Z0-9_]+",
-        normalize(text).lower(),
-    )
 
 
 def truncate(text, limit):
@@ -436,13 +217,25 @@ def truncate(text, limit):
 
 
 # ============================================================
-# DOCUMENT EXTRACTION
+# DOCUMENTS
 # ============================================================
+
+def extract_txt(file):
+
+    raw = file.read()
+
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError:
+        return raw.decode(
+            "latin-1",
+            errors="replace"
+        )
+
 
 def extract_pdf(file):
 
     if PdfReader is None:
-
         raise RuntimeError(
             "pypdf is not installed."
         )
@@ -454,38 +247,20 @@ def extract_pdf(file):
     for page in reader.pages:
 
         try:
-
             pages.append(
                 page.extract_text() or ""
             )
-
         except Exception:
             pass
 
     return "\n\n".join(pages)
 
 
-def extract_txt(file):
-
-    raw = file.read()
-
-    try:
-
-        return raw.decode("utf-8")
-
-    except UnicodeDecodeError:
-
-        return raw.decode(
-            "latin-1",
-            errors="replace"
-        )
-
-
 def extract_csv(file):
 
     df = pd.read_csv(file)
 
-    preview = df.head(100).to_csv(
+    preview = df.head(50).to_csv(
         index=False
     )
 
@@ -504,10 +279,6 @@ PREVIEW:
     return text, df
 
 
-# ============================================================
-# RAG
-# ============================================================
-
 def chunk_text(text):
 
     text = normalize(text)
@@ -523,10 +294,10 @@ def chunk_text(text):
             len(text)
         )
 
-        piece = text[start:end]
+        chunk = text[start:end]
 
-        if piece:
-            chunks.append(piece)
+        if chunk:
+            chunks.append(chunk)
 
         if end >= len(text):
             break
@@ -545,7 +316,7 @@ def index_document(
     text
 ):
 
-    for number, piece in enumerate(
+    for index, chunk in enumerate(
         chunk_text(text)
     ):
 
@@ -553,37 +324,36 @@ def index_document(
             {
                 "filename": filename,
                 "type": file_type,
-                "chunk": number,
-                "text": piece,
+                "chunk": index,
+                "text": chunk,
             }
         )
 
 
-def retrieve_documents(
-    query,
-    limit=MAX_RAG_RESULTS
-):
+def search_documents(query):
 
     if not st.session_state.documents:
-        return []
+        return ""
 
-    query_terms = set(
-        tokens(query)
+    query_words = set(
+        re.findall(
+            r"[a-zA-Z0-9]+",
+            query.lower()
+        )
     )
 
     scored = []
 
-    for document in st.session_state.documents:
+    for doc in st.session_state.documents:
 
-        counts = Counter(
-            tokens(
-                document["text"]
-            )
+        text_words = re.findall(
+            r"[a-zA-Z0-9]+",
+            doc["text"].lower()
         )
 
         score = sum(
-            counts[token]
-            for token in query_terms
+            text_words.count(word)
+            for word in query_words
         )
 
         if score > 0:
@@ -591,7 +361,7 @@ def retrieve_documents(
             scored.append(
                 (
                     score,
-                    document
+                    doc
                 )
             )
 
@@ -600,38 +370,85 @@ def retrieve_documents(
         reverse=True
     )
 
-    return [
+    selected = [
         item[1]
-        for item in scored[:limit]
+        for item in scored[:5]
     ]
 
-
-def rag_context(query):
-
-    results = retrieve_documents(
-        query
-    )
-
-    if not results:
+    if not selected:
         return ""
 
-    sections = []
+    result = []
 
-    for item in results:
+    for doc in selected:
 
-        sections.append(
+        result.append(
             f"""
-FILE: {item["filename"]}
-TYPE: {item["type"]}
-CHUNK: {item["chunk"]}
+SOURCE FILE: {doc["filename"]}
+CHUNK: {doc["chunk"]}
 
-{item["text"]}
+{doc["text"]}
 """
         )
 
     return truncate(
-        "\n".join(sections),
-        24000
+        "\n".join(result),
+        18000
+    )
+
+
+# ============================================================
+# WEB RESEARCH
+# ============================================================
+
+async def web_search(query):
+
+    client = get_tavily_client()
+
+    if client is None:
+        return []
+
+    try:
+
+        result = await asyncio.to_thread(
+            client.search,
+            query=query,
+            search_depth="basic",
+            max_results=MAX_WEB_RESULTS,
+            include_answer=True,
+        )
+
+        return result.get(
+            "results",
+            []
+        )
+
+    except Exception:
+        return []
+
+
+def should_search_web(query):
+
+    keywords = [
+        "current",
+        "today",
+        "latest",
+        "recent",
+        "news",
+        "price",
+        "bitcoin",
+        "stock",
+        "weather",
+        "live",
+        "2026",
+        "this week",
+    ]
+
+    query = query.lower()
+
+    return any(
+        word in query
+        for word in keywords
     )
 
 
@@ -639,351 +456,116 @@ CHUNK: {item["chunk"]}
 # SAFETY
 # ============================================================
 
-def safety_agent(query):
+def safety_check(query):
 
-    patterns = [
-        r"\bmake\s+(a\s+)?bomb\b",
-        r"\bbuild\s+(a\s+)?bomb\b",
-        r"\bransomware\b",
-        r"\bsteal\s+password",
-        r"\bcredential\s+theft\b",
-        r"\bkeylogger\b",
-        r"\bmalware\b",
+    blocked = [
+        "make a bomb",
+        "build a bomb",
+        "steal password",
+        "credential theft",
+        "ransomware",
+        "keylogger",
     ]
 
-    for pattern in patterns:
+    query = query.lower()
 
-        if re.search(
-            pattern,
-            query.lower()
-        ):
+    for item in blocked:
 
-            return {
-                "safe": False,
-                "reason":
-                    "Potentially harmful request."
-            }
+        if item in query:
 
-    return {
-        "safe": True,
-        "reason":
-            "No obvious high-risk request detected."
-    }
+            return False
+
+    return True
 
 
 # ============================================================
-# WEB RESEARCH
+# AI
 # ============================================================
 
-async def research_agent(query):
-
-    client = get_tavily_client()
-
-    if client is None:
-
-        return {
-            "available": False,
-            "results": [],
-            "answer": ""
-        }
-
-    try:
-
-        result = await asyncio.to_thread(
-            client.search,
-            query=query,
-            search_depth="advanced",
-            max_results=MAX_WEB_RESULTS,
-            include_answer=True,
-            include_raw_content=True
-        )
-
-        sources = []
-
-        for item in result.get(
-            "results",
-            []
-        ):
-
-            sources.append(
-                {
-                    "title": item.get(
-                        "title",
-                        "Source"
-                    ),
-                    "url": item.get(
-                        "url",
-                        ""
-                    ),
-                    "content": truncate(
-                        item.get(
-                            "raw_content"
-                        )
-                        or item.get(
-                            "content",
-                            ""
-                        ),
-                        7000
-                    )
-                }
-            )
-
-        return {
-            "available": True,
-            "answer": result.get(
-                "answer",
-                ""
-            ),
-            "results": sources
-        }
-
-    except Exception as exc:
-
-        return {
-            "available": False,
-            "results": [],
-            "error": str(exc)
-        }
-
-
-# ============================================================
-# DATA
-# ============================================================
-
-def data_agent():
-
-    datasets = (
-        st.session_state.csv_datasets
-    )
-
-    if not datasets:
-
-        return {
-            "available": False,
-            "datasets": []
-        }
-
-    output = []
-
-    for dataset in datasets:
-
-        df = dataset["data"]
-
-        numeric = list(
-            df.select_dtypes(
-                include=np.number
-            ).columns
-        )
-
-        item = {
-            "file": dataset["name"],
-            "rows": len(df),
-            "columns": list(
-                map(
-                    str,
-                    df.columns
-                )
-            ),
-            "numeric_columns": list(
-                map(
-                    str,
-                    numeric
-                )
-            )
-        }
-
-        if numeric:
-
-            item["statistics"] = (
-                df[numeric]
-                .describe()
-                .round(4)
-                .to_dict()
-            )
-
-        item["missing_values"] = {
-            str(column): int(value)
-            for column, value
-            in df.isna().sum().items()
-            if int(value) > 0
-        }
-
-        output.append(item)
-
-    return {
-        "available": True,
-        "datasets": output
-    }
-
-
-# ============================================================
-# SIMPLE ROUTER
-# ============================================================
-
-def create_local_plan(query):
-
-    lower = query.lower()
-
-    web_keywords = [
-        "current",
-        "today",
-        "latest",
-        "recent",
-        "news",
-        "price",
-        "stock",
-        "bitcoin",
-        "crypto",
-        "weather",
-        "live",
-        "market",
-        "2026",
-        "exchange rate",
-        "forecast",
-    ]
-
-    needs_web = any(
-        word in lower
-        for word in web_keywords
-    )
-
-    needs_rag = bool(
-        st.session_state.documents
-    )
-
-    needs_data = bool(
-        st.session_state.csv_datasets
-    )
-
-    return {
-        "complexity": "simple",
-        "needs_web": (
-            needs_web
-            and bool(TAVILY_API_KEY)
-        ),
-        "needs_data": needs_data,
-        "needs_rag": needs_rag,
-        "subtasks": []
-    }
-
-
-# ============================================================
-# RESEARCH FORMAT
-# ============================================================
-
-def format_research(research):
-
-    if not research:
-        return ""
-
-    parts = []
-
-    if research.get("answer"):
-
-        parts.append(
-            "WEB SUMMARY:\n"
-            + truncate(
-                research["answer"],
-                6000
-            )
-        )
-
-    for source in research.get(
-        "results",
-        []
-    ):
-
-        parts.append(
-            f"""
-TITLE:
-{source["title"]}
-
-URL:
-{source["url"]}
-
-CONTENT:
-{source["content"]}
-"""
-        )
-
-    return truncate(
-        "\n".join(parts),
-        26000
-    )
-
-
-# ============================================================
-# REASONING
-# ============================================================
-
-async def reasoning_agent(
+async def ask_nexus(
     query,
-    plan,
-    safety,
-    research,
-    data,
-    local_context
+    local_context="",
+    web_results=None
 ):
 
     client = get_gemini_client()
-    model = require_model()
 
-    recent = (
-        st.session_state.messages[
-            -MAX_HISTORY:
-        ]
-    )
+    if client is None:
 
-    conversation = "\n".join(
-        f"{m['role']}: {m['content']}"
-        for m in recent
-    )
+        raise RuntimeError(
+            "GEMINI_API_KEY is missing."
+        )
+
+    model = discover_model()
+
+    if not model:
+
+        raise RuntimeError(
+            "No Gemini model is available."
+        )
+
+    web_context = ""
+
+    if web_results:
+
+        parts = []
+
+        for source in web_results:
+
+            parts.append(
+                f"""
+TITLE:
+{source.get("title", "")}
+
+URL:
+{source.get("url", "")}
+
+CONTENT:
+{source.get("content", "")}
+"""
+            )
+
+        web_context = truncate(
+            "\n".join(parts),
+            18000
+        )
+
+    history = ""
+
+    for message in st.session_state.messages[-MAX_HISTORY:]:
+
+        history += (
+            f'{message["role"].upper()}: '
+            f'{message["content"]}\n'
+        )
 
     prompt = f"""
-You are NEXUS, a professional AI assistant.
+You are NEXUS, a modern AI assistant for research,
+analysis, reasoning, and productivity.
 
-Your job is to answer the user's request accurately,
-clearly, and directly.
+Answer the user's question clearly and naturally.
 
-USER REQUEST:
+USER:
 {query}
 
-NEXUS ROUTING:
-{json.dumps(plan, indent=2)}
-
-SAFETY:
-{json.dumps(safety, indent=2)}
-
-WEB RESEARCH:
-{format_research(research)}
-
-UPLOADED DATA:
-{json.dumps(data, indent=2)}
-
-UPLOADED DOCUMENT CONTEXT:
+LOCAL KNOWLEDGE:
 {local_context}
 
-MEMORY:
-{st.session_state.memory_summary}
+WEB RESEARCH:
+{web_context}
 
 RECENT CONVERSATION:
-{conversation}
+{history}
 
-Instructions:
+Rules:
 
-1. Answer the user directly.
-2. Use web research when supplied.
-3. Use uploaded documents when relevant.
-4. Use uploaded CSV data when relevant.
-5. Do not invent facts or sources.
-6. If information is uncertain, say so.
-7. For simple arithmetic, calculate accurately.
-8. Keep the response readable.
-9. Do not mention internal routing unless useful.
-10. Do not claim to have live information unless live research
-    was actually provided.
-11. If the user asks for code, provide working code.
-12. If the user asks for an explanation, explain it simply.
+- Answer directly.
+- Be accurate.
+- Do not invent facts.
+- If web information is provided, use it when relevant.
+- If information is uncertain, say so.
+- For calculations, show the calculation clearly.
+- Do not mention internal routing or implementation details.
 """
 
     response = await asyncio.to_thread(
@@ -996,231 +578,7 @@ Instructions:
 
 
 # ============================================================
-# CODE VERIFICATION
-# ============================================================
-
-class CodeSafetyError(Exception):
-    pass
-
-
-class Validator(ast.NodeVisitor):
-
-    forbidden_nodes = (
-        ast.Import,
-        ast.ImportFrom,
-        ast.ClassDef,
-        ast.AsyncFunctionDef,
-        ast.Global,
-        ast.Nonlocal,
-    )
-
-    forbidden_names = {
-        "os",
-        "sys",
-        "subprocess",
-        "socket",
-        "shutil",
-        "requests",
-        "urllib",
-        "pathlib",
-        "pickle",
-        "importlib",
-        "__import__",
-    }
-
-    forbidden_functions = {
-        "eval",
-        "exec",
-        "compile",
-        "open",
-        "input",
-    }
-
-    def visit(self, node):
-
-        if isinstance(
-            node,
-            self.forbidden_nodes
-        ):
-
-            raise CodeSafetyError(
-                f"Forbidden syntax: "
-                f"{type(node).__name__}"
-            )
-
-        super().visit(node)
-
-    def visit_Name(self, node):
-
-        if node.id in self.forbidden_names:
-
-            raise CodeSafetyError(
-                f"Forbidden name: {node.id}"
-            )
-
-        self.generic_visit(node)
-
-    def visit_Call(self, node):
-
-        if (
-            isinstance(
-                node.func,
-                ast.Name
-            )
-            and node.func.id
-            in self.forbidden_functions
-        ):
-
-            raise CodeSafetyError(
-                f"Forbidden function: "
-                f"{node.func.id}"
-            )
-
-        self.generic_visit(node)
-
-    def visit_Attribute(self, node):
-
-        if node.attr.startswith("__"):
-
-            raise CodeSafetyError(
-                "Dunder access is forbidden."
-            )
-
-        self.generic_visit(node)
-
-
-def verify_code(code):
-
-    try:
-
-        if len(code) > 10000:
-
-            raise CodeSafetyError(
-                "Code block is too large."
-            )
-
-        tree = ast.parse(
-            code,
-            mode="exec"
-        )
-
-        Validator().visit(tree)
-
-    except Exception as exc:
-
-        return {
-            "success": False,
-            "stdout": "",
-            "stderr": str(exc)
-        }
-
-    runner = f"""
-import math
-import statistics
-import json
-
-SAFE_BUILTINS = {{
-    "abs": abs,
-    "all": all,
-    "any": any,
-    "bool": bool,
-    "dict": dict,
-    "enumerate": enumerate,
-    "float": float,
-    "int": int,
-    "len": len,
-    "list": list,
-    "max": max,
-    "min": min,
-    "print": print,
-    "range": range,
-    "round": round,
-    "set": set,
-    "sorted": sorted,
-    "str": str,
-    "sum": sum,
-    "tuple": tuple,
-    "zip": zip
-}}
-
-environment = {{
-    "__builtins__": SAFE_BUILTINS,
-    "math": math,
-    "statistics": statistics,
-    "json": json
-}}
-
-exec(
-    compile(
-        {code!r},
-        "<nexus>",
-        "exec"
-    ),
-    environment,
-    environment
-)
-"""
-
-    try:
-
-        process = subprocess.run(
-            [
-                sys.executable,
-                "-I",
-                "-S",
-                "-c",
-                runner
-            ],
-            capture_output=True,
-            text=True,
-            timeout=5,
-            cwd=tempfile.gettempdir()
-        )
-
-        return {
-            "success":
-                process.returncode == 0,
-            "stdout":
-                truncate(
-                    process.stdout,
-                    8000
-                ),
-            "stderr":
-                truncate(
-                    process.stderr,
-                    8000
-                )
-        }
-
-    except subprocess.TimeoutExpired:
-
-        return {
-            "success": False,
-            "stdout": "",
-            "stderr":
-                "Verification timed out."
-        }
-
-    except Exception as exc:
-
-        return {
-            "success": False,
-            "stdout": "",
-            "stderr": str(exc)
-        }
-
-
-def extract_python(text):
-
-    return re.findall(
-        r"```python\s*(.*?)```",
-        text,
-        flags=re.DOTALL | re.IGNORECASE
-    )
-
-
-# ============================================================
-# MASTER NEXUS
+# MAIN NEXUS RUNNER
 # ============================================================
 
 async def run_nexus(query):
@@ -1229,206 +587,416 @@ async def run_nexus(query):
 
     st.session_state.agent_log = []
 
-    # --------------------------------------------------------
-    # SAFETY
-    # --------------------------------------------------------
-
-    safety = safety_agent(query)
-
-    st.session_state.agent_log.append(
-        "Safety check complete"
-    )
-
-    if not safety["safe"]:
+    if not safety_check(query):
 
         return {
             "answer":
                 "I can't help with instructions "
                 "that facilitate harmful activity.",
             "sources": [],
-            "execution": [],
             "latency":
-                time.perf_counter() - start
+                time.perf_counter() - start,
         }
 
-    # --------------------------------------------------------
-    # ROUTING
-    # --------------------------------------------------------
+    st.session_state.agent_log.append(
+        "Safety check"
+    )
 
-    plan = create_local_plan(
+    local_context = search_documents(
         query
     )
 
-    st.session_state.last_plan = plan
+    if local_context:
 
-    st.session_state.agent_log.append(
-        "Request routing complete"
-    )
+        st.session_state.agent_log.append(
+            "Knowledge search"
+        )
 
-    # --------------------------------------------------------
-    # DOCUMENTS
-    # --------------------------------------------------------
+    web_results = []
 
-    local_context = ""
+    if (
+        TAVILY_API_KEY
+        and should_search_web(query)
+    ):
 
-    if plan["needs_rag"]:
-
-        local_context = rag_context(
+        web_results = await web_search(
             query
         )
 
-        st.session_state.agent_log.append(
-            "Document retrieval complete"
-        )
+        if web_results:
 
-    # --------------------------------------------------------
-    # WEB
-    # --------------------------------------------------------
+            st.session_state.agent_log.append(
+                "Web research"
+            )
 
-    research = {}
-
-    if plan["needs_web"]:
-
-        research = await research_agent(
-            query
-        )
-
-        st.session_state.agent_log.append(
-            "Web research complete"
-        )
-
-    # --------------------------------------------------------
-    # DATA
-    # --------------------------------------------------------
-
-    data = {}
-
-    if plan["needs_data"]:
-
-        data = data_agent()
-
-        st.session_state.agent_log.append(
-            "Data analysis complete"
-        )
-
-    # --------------------------------------------------------
-    # GEMINI
-    # --------------------------------------------------------
-
-    st.session_state.agent_log.append(
-        "Generating response"
-    )
-
-    draft = await reasoning_agent(
+    answer = await ask_nexus(
         query,
-        plan,
-        safety,
-        research,
-        data,
-        local_context
+        local_context,
+        web_results
     )
 
-    # --------------------------------------------------------
-    # OPTIONAL CODE VERIFICATION
-    # --------------------------------------------------------
-
-    execution = []
-
-    code_blocks = extract_python(
-        draft
+    st.session_state.agent_log.append(
+        "Reasoning complete"
     )
-
-    if code_blocks:
-
-        for code in code_blocks[:3]:
-
-            result = await asyncio.to_thread(
-                verify_code,
-                code
-            )
-
-            execution.append(
-                {
-                    "code": code,
-                    "result": result
-                }
-            )
-
-        st.session_state.agent_log.append(
-            "Calculation verification complete"
-        )
 
     return {
-        "answer": draft,
-        "sources":
-            research.get(
-                "results",
-                []
-            ),
-        "execution": execution,
+        "answer": answer,
+        "sources": web_results,
         "latency":
-            time.perf_counter() - start
+            time.perf_counter() - start,
     }
 
 
 # ============================================================
-# MEMORY
+# CSS — NEW UI
 # ============================================================
 
-async def compress_memory():
+st.markdown(
+    """
+<style>
 
-    if len(
-        st.session_state.messages
-    ) < 12:
+html, body, [class*="css"] {
+    font-family:
+        Inter,
+        -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
+        sans-serif;
+}
 
-        return
+/* REMOVE STREAMLIT CHROME */
 
-    client = get_gemini_client()
+#MainMenu {
+    visibility: hidden;
+}
 
-    if client is None:
-        return
+header {
+    visibility: hidden;
+}
 
-    model = require_model()
+footer {
+    visibility: hidden;
+}
 
-    old = (
-        st.session_state.messages[:-8]
-    )
 
-    transcript = "\n".join(
-        f"{m['role']}: {m['content']}"
-        for m in old
-    )
+/* PAGE */
 
-    prompt = f"""
-Create compact memory for this conversation.
+.block-container {
 
-Preserve:
-- goals
-- decisions
-- important facts
-- technical context
-- unfinished work
+    max-width: 1050px;
 
-Existing memory:
-{st.session_state.memory_summary}
+    padding-top: 1.5rem;
+    padding-bottom: 8rem;
+}
 
-Conversation:
-{truncate(transcript, 14000)}
-"""
 
-    response = await asyncio.to_thread(
-        client.models.generate_content,
-        model=model,
-        contents=prompt
-    )
+/* SIDEBAR */
 
-    st.session_state.memory_summary = (
-        response.text or ""
-    )[:7000]
+section[data-testid="stSidebar"] {
 
-    st.session_state.messages = (
-        st.session_state.messages[-8:]
-    )
+    background: rgba(15,15,18,.96);
+
+    border-right:
+        1px solid rgba(255,255,255,.07);
+}
+
+
+/* TOP BAR */
+
+.nexus-top {
+
+    display: flex;
+
+    align-items: center;
+
+    justify-content: space-between;
+
+    margin-bottom: 20px;
+}
+
+
+.nexus-logo {
+
+    font-size: 20px;
+
+    font-weight: 800;
+
+    letter-spacing: -0.8px;
+}
+
+
+.nexus-sub {
+
+    color: #777;
+
+    font-size: 12px;
+
+    margin-top: 2px;
+}
+
+
+.model-pill {
+
+    border:
+        1px solid rgba(255,255,255,.10);
+
+    background:
+        rgba(255,255,255,.035);
+
+    border-radius: 999px;
+
+    padding:
+        7px 12px;
+
+    font-size: 11px;
+
+    color: #aaa;
+}
+
+
+/* HERO */
+
+.hero {
+
+    text-align: center;
+
+    padding:
+        15vh 10px 8vh;
+}
+
+
+.hero-icon {
+
+    width: 58px;
+
+    height: 58px;
+
+    border-radius: 18px;
+
+    display: inline-flex;
+
+    align-items: center;
+
+    justify-content: center;
+
+    font-size: 26px;
+
+    background:
+        linear-gradient(
+            135deg,
+            #202027,
+            #111116
+        );
+
+    border:
+        1px solid rgba(255,255,255,.10);
+
+    box-shadow:
+        0 15px 50px
+        rgba(0,0,0,.25);
+
+    margin-bottom: 22px;
+}
+
+
+.hero-title {
+
+    font-size: 42px;
+
+    font-weight: 750;
+
+    letter-spacing: -2px;
+
+    margin-bottom: 8px;
+}
+
+
+.hero-text {
+
+    color: #777;
+
+    font-size: 15px;
+
+    max-width: 520px;
+
+    margin:
+        0 auto;
+}
+
+
+/* SUGGESTIONS */
+
+.suggestion {
+
+    border:
+        1px solid rgba(255,255,255,.08);
+
+    background:
+        rgba(255,255,255,.025);
+
+    border-radius: 15px;
+
+    padding: 14px;
+
+    color: #aaa;
+
+    font-size: 13px;
+
+    transition: .2s;
+}
+
+
+.suggestion:hover {
+
+    background:
+        rgba(255,255,255,.05);
+
+    border-color:
+        rgba(255,255,255,.15);
+}
+
+
+/* CHAT */
+
+[data-testid="stChatMessage"] {
+
+    padding-top: 1.1rem;
+
+    padding-bottom: 1.1rem;
+
+}
+
+
+[data-testid="stChatMessageContent"] {
+
+    font-size: 15px;
+
+    line-height: 1.7;
+
+}
+
+
+/* HIDE AVATARS */
+
+[data-testid="stChatMessageAvatar"] {
+
+    display: none;
+}
+
+
+/* INPUT */
+
+[data-testid="stChatInput"] {
+
+    border-radius: 20px !important;
+
+}
+
+
+[data-testid="stChatInput"] textarea {
+
+    font-size: 15px !important;
+}
+
+
+/* ACTIVITY */
+
+.activity-box {
+
+    border:
+        1px solid rgba(255,255,255,.07);
+
+    border-radius: 14px;
+
+    padding: 12px 15px;
+
+    background:
+        rgba(255,255,255,.025);
+
+    color: #999;
+
+    font-size: 12px;
+
+}
+
+
+/* SOURCE */
+
+.source-card {
+
+    padding: 12px 14px;
+
+    margin:
+        7px 0;
+
+    border-radius: 12px;
+
+    background:
+        rgba(255,255,255,.025);
+
+    border:
+        1px solid rgba(255,255,255,.07);
+}
+
+
+.source-title {
+
+    font-size: 13px;
+
+    font-weight: 600;
+}
+
+
+.source-url {
+
+    font-size: 10px;
+
+    color: #666;
+
+    overflow-wrap: anywhere;
+
+    margin-top: 3px;
+}
+
+
+/* SIDEBAR BUTTONS */
+
+.stButton > button {
+
+    border-radius: 12px;
+
+    min-height: 40px;
+}
+
+
+/* MOBILE */
+
+@media(max-width:700px) {
+
+    .hero {
+
+        padding:
+            10vh 10px 5vh;
+    }
+
+    .hero-title {
+
+        font-size: 32px;
+    }
+
+    .block-container {
+
+        padding-left: 14px;
+
+        padding-right: 14px;
+    }
+
+}
+
+</style>
+""",
+    unsafe_allow_html=True
+)
 
 
 # ============================================================
@@ -1438,15 +1006,11 @@ Conversation:
 with st.sidebar:
 
     st.markdown(
-        '<div class="sidebar-brand">NEXUS</div>',
-        unsafe_allow_html=True
+        "### ✦ NEXUS"
     )
 
-    st.markdown(
-        '<div class="sidebar-muted">'
+    st.caption(
         "AI workspace"
-        "</div>",
-        unsafe_allow_html=True
     )
 
     st.divider()
@@ -1457,9 +1021,10 @@ with st.sidebar:
     ):
 
         st.session_state.messages = []
-        st.session_state.memory_summary = ""
+
         st.session_state.agent_log = []
-        st.session_state.last_plan = {}
+
+        st.session_state.sources = []
 
         st.rerun()
 
@@ -1469,129 +1034,65 @@ with st.sidebar:
         "**System**"
     )
 
-    model = None
-
-    if GEMINI_API_KEY:
-
-        try:
-
-            model = discover_gemini_model()
-
-        except Exception:
-
-            model = None
+    model = discover_model()
 
     if model:
 
-        st.markdown(
-            f"""
-            <div class="status-card">
-                <div class="status-label">Gemini</div>
-                <div class="status-value">
-                    <span class="dot"></span>
-                    Connected
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
-        st.caption(
-            model
+        st.success(
+            f"Gemini · {model}"
         )
 
     else:
 
-        st.markdown(
-            """
-            <div class="status-card">
-                <div class="status-label">Gemini</div>
-                <div class="status-value">
-                    <span class="dot dot-off"></span>
-                    Not connected
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True
+        st.error(
+            "Gemini not connected"
         )
-
-    st.write("")
-
-    # WEB STATUS
 
     if TAVILY_API_KEY:
 
-        st.markdown(
-            """
-            <div class="status-card">
-                <div class="status-label">
-                    Web research
-                </div>
-                <div class="status-value">
-                    <span class="dot"></span>
-                    Available
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True
+        st.success(
+            "Web research · Available"
         )
 
     else:
 
-        st.markdown(
-            """
-            <div class="status-card">
-                <div class="status-label">
-                    Web research
-                </div>
-                <div class="status-value">
-                    <span class="dot dot-off"></span>
-                    Unavailable
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True
+        st.warning(
+            "Web research · Unavailable"
         )
 
     st.divider()
-
-    # KNOWLEDGE
 
     st.markdown(
         "**Knowledge**"
     )
 
     uploads = st.file_uploader(
-        "Upload documents",
+        "Upload files",
         type=[
             "pdf",
             "txt",
             "csv"
         ],
-        accept_multiple_files=True,
-        label_visibility="collapsed"
+        accept_multiple_files=True
     )
 
     if uploads:
 
-        loaded = {
-            item["filename"]
-            for item
+        existing = {
+            doc["filename"]
+            for doc
             in st.session_state.documents
         }
 
         for uploaded in uploads:
 
-            if uploaded.name in loaded:
+            if uploaded.name in existing:
                 continue
 
-            size_mb = (
+            if (
                 uploaded.size
-                / 1024
-                / 1024
-            )
-
-            if size_mb > MAX_FILE_MB:
+                > MAX_FILE_MB * 1024 * 1024
+            ):
 
                 st.warning(
                     f"{uploaded.name} is too large."
@@ -1652,6 +1153,10 @@ with st.sidebar:
                         }
                     )
 
+                st.success(
+                    f"Added {uploaded.name}"
+                )
+
             except Exception as exc:
 
                 st.error(
@@ -1660,7 +1165,7 @@ with st.sidebar:
 
     st.caption(
         f"{len(st.session_state.documents)} "
-        "document chunks indexed"
+        "knowledge chunks"
     )
 
     if st.button(
@@ -1669,111 +1174,116 @@ with st.sidebar:
     ):
 
         st.session_state.documents = []
+
         st.session_state.csv_datasets = []
 
         st.rerun()
 
     st.divider()
 
-    # MEMORY
-
-    st.markdown(
-        "**Memory**"
+    st.caption(
+        f"NEXUS v{APP_VERSION}"
     )
 
-    if st.session_state.memory_summary:
 
-        with st.expander(
-            "View memory"
-        ):
+# ============================================================
+# TOP BAR
+# ============================================================
 
-            st.write(
-                st.session_state.memory_summary
-            )
+model_display = (
+    st.session_state.selected_model
+    or "Auto"
+)
 
-    else:
+st.markdown(
+    f"""
+<div class="nexus-top">
 
-        st.caption(
-            "Memory will appear here as "
-            "the conversation grows."
+    <div>
+        <div class="nexus-logo">
+            ✦ NEXUS
+        </div>
+
+        <div class="nexus-sub">
+            Agentic workspace
+        </div>
+    </div>
+
+    <div class="model-pill">
+        {model_display}
+    </div>
+
+</div>
+""",
+    unsafe_allow_html=True
+)
+
+
+# ============================================================
+# WELCOME SCREEN
+# ============================================================
+
+if not st.session_state.messages:
+
+    st.markdown(
+        """
+<div class="hero">
+
+    <div class="hero-icon">
+        ✦
+    </div>
+
+    <div class="hero-title">
+        How can I help?
+    </div>
+
+    <div class="hero-text">
+        Research, analyze, reason, and work
+        with your knowledge using NEXUS.
+    </div>
+
+</div>
+""",
+        unsafe_allow_html=True
+    )
+
+    c1, c2, c3 = st.columns(3)
+
+    with c1:
+
+        st.markdown(
+            """
+<div class="suggestion">
+<b>Research</b><br>
+Find current information and sources.
+</div>
+""",
+            unsafe_allow_html=True
         )
 
+    with c2:
 
-# ============================================================
-# MAIN HEADER
-# ============================================================
+        st.markdown(
+            """
+<div class="suggestion">
+<b>Analyze</b><br>
+Work with documents and data.
+</div>
+""",
+            unsafe_allow_html=True
+        )
 
-st.markdown(
-    '<div class="nexus-brand">NEXUS</div>',
-    unsafe_allow_html=True
-)
+    with c3:
 
-st.markdown(
-    '<div class="nexus-description">'
-    "A clean agentic workspace for research, "
-    "analysis, and reasoning."
-    "</div>",
-    unsafe_allow_html=True
-)
-
-
-# ============================================================
-# STATUS CARDS
-# ============================================================
-
-col1, col2, col3 = st.columns(3)
-
-with col1:
-
-    st.markdown(
-        f"""
-        <div class="status-card">
-            <div class="status-label">
-                Model
-            </div>
-            <div class="status-value">
-                {st.session_state.selected_model or "Auto"}
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-with col2:
-
-    st.markdown(
-        f"""
-        <div class="status-card">
-            <div class="status-label">
-                Knowledge
-            </div>
-            <div class="status-value">
-                {len(st.session_state.documents)}
-                chunks indexed
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-with col3:
-
-    st.markdown(
-        f"""
-        <div class="status-card">
-            <div class="status-label">
-                Requests
-            </div>
-            <div class="status-value">
-                {st.session_state.request_count}
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-
-st.write("")
+        st.markdown(
+            """
+<div class="suggestion">
+<b>Reason</b><br>
+Solve problems and explain ideas.
+</div>
+""",
+            unsafe_allow_html=True
+        )
 
 
 # ============================================================
@@ -1805,10 +1315,10 @@ if st.session_state.agent_log:
 
             st.markdown(
                 f"""
-                <div class="agent-row">
-                    {item}
-                </div>
-                """,
+<div class="activity-box">
+    ✓ {item}
+</div>
+""",
                 unsafe_allow_html=True
             )
 
@@ -1823,7 +1333,7 @@ query = st.chat_input(
 
 
 # ============================================================
-# EXECUTION
+# PROCESS
 # ============================================================
 
 if query:
@@ -1831,7 +1341,8 @@ if query:
     if not GEMINI_API_KEY:
 
         st.error(
-            "Add GEMINI_API_KEY to Streamlit Secrets."
+            "GEMINI_API_KEY is missing. "
+            "Add it to Streamlit Secrets."
         )
 
         st.stop()
@@ -1849,198 +1360,72 @@ if query:
 
     with st.chat_message("assistant"):
 
-        with st.status(
-            "Working...",
-            expanded=False
-        ) as status:
+        try:
 
-            try:
+            with st.spinner(
+                "NEXUS is thinking..."
+            ):
 
                 result = asyncio.run(
                     run_nexus(query)
                 )
 
-                status.update(
-                    label="Complete",
-                    state="complete"
-                )
+            answer = result["answer"]
 
-            except Exception as exc:
+            st.markdown(
+                answer
+            )
 
-                status.update(
-                    label="Request failed",
-                    state="error"
-                )
+            if result["sources"]:
 
-                error_text = (
-                    f"{type(exc).__name__}: {exc}"
-                )
-
-                # Give a much clearer quota message
-                if (
-                    "429" in error_text
-                    or "RESOURCE_EXHAUSTED"
-                    in error_text
+                with st.expander(
+                    "Sources"
                 ):
 
-                    st.error(
-                        "Gemini API quota has been "
-                        "exhausted. The code is running, "
-                        "but Google is currently refusing "
-                        "the Gemini request because the "
-                        "API project's quota has been reached."
-                    )
+                    for source in result["sources"]:
 
-                    st.caption(
-                        error_text
-                    )
+                        title = source.get(
+                            "title",
+                            "Source"
+                        )
 
-                else:
-
-                    st.error(
-                        error_text
-                    )
-
-                st.stop()
-
-        # ----------------------------------------------------
-        # ANSWER
-        # ----------------------------------------------------
-
-        final_answer = result["answer"]
-
-        st.markdown(
-            final_answer
-        )
-
-        # ----------------------------------------------------
-        # SOURCES
-        # ----------------------------------------------------
-
-        if result["sources"]:
-
-            with st.expander(
-                "Sources"
-            ):
-
-                for source in result["sources"]:
-
-                    title = source.get(
-                        "title",
-                        "Source"
-                    )
-
-                    url = source.get(
-                        "url",
-                        ""
-                    )
-
-                    if url:
+                        url = source.get(
+                            "url",
+                            ""
+                        )
 
                         st.markdown(
                             f"""
-                            <div class="source">
-                                <div class="source-title">
-                                    {title}
-                                </div>
-                                <div class="source-url">
-                                    {url}
-                                </div>
-                            </div>
-                            """,
+<div class="source-card">
+
+    <div class="source-title">
+        {title}
+    </div>
+
+    <div class="source-url">
+        {url}
+    </div>
+
+</div>
+""",
                             unsafe_allow_html=True
                         )
 
-        # ----------------------------------------------------
-        # DETAILS
-        # ----------------------------------------------------
+        except Exception as exc:
 
-        with st.expander(
-            "Details"
-        ):
-
-            st.write(
-                f"Response time: "
-                f"{result['latency']:.2f}s"
+            st.error(
+                f"{type(exc).__name__}: {exc}"
             )
 
-            if st.session_state.last_plan:
-
-                st.json(
-                    st.session_state.last_plan
-                )
-
-        # ----------------------------------------------------
-        # VERIFICATION
-        # ----------------------------------------------------
-
-        if result["execution"]:
-
-            with st.expander(
-                "Verification"
-            ):
-
-                for item in result["execution"]:
-
-                    st.code(
-                        item["code"],
-                        language="python"
-                    )
-
-                    verification = item[
-                        "result"
-                    ]
-
-                    if verification["success"]:
-
-                        st.success(
-                            "Verification passed."
-                        )
-
-                    else:
-
-                        st.warning(
-                            verification["stderr"]
-                        )
-
-                    if verification["stdout"]:
-
-                        st.code(
-                            verification["stdout"]
-                        )
-
-    # --------------------------------------------------------
-    # SAVE ASSISTANT MESSAGE
-    # --------------------------------------------------------
+            st.stop()
 
     st.session_state.messages.append(
         {
             "role": "assistant",
-            "content": final_answer
+            "content": answer
         }
     )
 
     st.session_state.request_count += 1
-
-    st.session_state.total_latency += (
-        result["latency"]
-    )
-
-    # --------------------------------------------------------
-    # MEMORY
-    # --------------------------------------------------------
-
-    if len(
-        st.session_state.messages
-    ) >= 12:
-
-        try:
-
-            asyncio.run(
-                compress_memory()
-            )
-
-        except Exception:
-            pass
 
     st.rerun()

@@ -501,8 +501,8 @@ if chat_value:
     attached_images = index_files(uploaded_files)
 
     if not user_text and uploaded_files:
-        user_text = "Please analyze the attached image(s)."
-
+        user_text = "Please analyze the attached file(s)."
+        
     if not user_text:
         st.stop()
 

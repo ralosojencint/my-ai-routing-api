@@ -1314,11 +1314,13 @@ Do not invent information.
 # ============================================================
 
 async def run_nexus(query):
+async def run_nexus(query):
 
     start = time.perf_counter()
 
     st.session_state.agent_log = []
 
+    # Safety check
     safety = safety_agent(query)
 
     st.session_state.agent_log.append(
@@ -1326,7 +1328,6 @@ async def run_nexus(query):
     )
 
     if not safety["safe"]:
-
         return {
             "answer":
                 "I can't help with instructions "
@@ -1337,17 +1338,64 @@ async def run_nexus(query):
                 time.perf_counter() - start
         }
 
-    plan = await create_plan(query)
+    # --------------------------------------------------------
+    # Lightweight routing — no Gemini call needed
+    # --------------------------------------------------------
+
+    lower_query = query.lower()
+
+    web_keywords = [
+        "current",
+        "today",
+        "latest",
+        "recent",
+        "news",
+        "price",
+        "stock",
+        "bitcoin",
+        "weather",
+        "live",
+        "2026"
+    ]
+
+    needs_web = (
+        TAVILY_API_KEY
+        and any(
+            word in lower_query
+            for word in web_keywords
+        )
+    )
+
+    needs_rag = bool(
+        st.session_state.documents
+    )
+
+    needs_data = bool(
+        st.session_state.csv_datasets
+    )
+
+    plan = {
+        "complexity": "simple",
+        "needs_web": bool(needs_web),
+        "needs_data": needs_data,
+        "needs_rag": needs_rag,
+        "needs_verification": False,
+        "subtasks": []
+    }
 
     st.session_state.last_plan = plan
 
     st.session_state.agent_log.append(
-        "Orchestrator plan created"
+        "Lightweight routing complete"
     )
+
+    # --------------------------------------------------------
+    # Document retrieval
+    # --------------------------------------------------------
 
     local_context = ""
 
-    if plan.get("needs_rag"):
+    if needs_rag:
 
         local_context = rag_context(query)
 
@@ -1355,9 +1403,13 @@ async def run_nexus(query):
             "Document retrieval complete"
         )
 
+    # --------------------------------------------------------
+    # Web research
+    # --------------------------------------------------------
+
     research = {}
 
-    if plan.get("needs_web"):
+    if needs_web:
 
         research = await research_agent(query)
 
@@ -1365,15 +1417,23 @@ async def run_nexus(query):
             "Web research complete"
         )
 
+    # --------------------------------------------------------
+    # Data analysis
+    # --------------------------------------------------------
+
     data = {}
 
-    if plan.get("needs_data"):
+    if needs_data:
 
         data = data_agent()
 
         st.session_state.agent_log.append(
             "Data analysis complete"
         )
+
+    # --------------------------------------------------------
+    # ONE Gemini reasoning call
+    # --------------------------------------------------------
 
     draft = await reasoning_agent(
         query,
@@ -1384,42 +1444,9 @@ async def run_nexus(query):
         local_context
     )
 
-    execution = []
-
-    code_blocks = extract_python(
-        draft
+    st.session_state.agent_log.append(
+        "Response generated"
     )
-
-    if (
-        plan.get("needs_verification")
-        or code_blocks
-    ):
-
-        for code in code_blocks[:3]:
-
-            result = await asyncio.to_thread(
-                verify_code,
-                code
-            )
-
-            execution.append(
-                {
-                    "code": code,
-                    "result": result
-                }
-            )
-
-        if execution:
-
-            draft = await self_correct(
-                query,
-                draft,
-                execution
-            )
-
-            st.session_state.agent_log.append(
-                "Verification complete"
-            )
 
     return {
         "answer": draft,
@@ -1427,7 +1454,7 @@ async def run_nexus(query):
             "results",
             []
         ),
-        "execution": execution,
+        "execution": [],
         "latency":
             time.perf_counter() - start
     }

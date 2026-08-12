@@ -230,8 +230,7 @@ async def gemini_text(prompt, images=None):
     for _, image in images or []:
         contents.append(image)
 
-
-        try:
+    try:
         response = await asyncio.to_thread(
             client.models.generate_content,
             model=MODEL,
@@ -239,7 +238,7 @@ async def gemini_text(prompt, images=None):
         )
         return response.text or "I received no text response."
     except Exception as exc:
-        return f"Gemini error: 
+        return f"Gemini error:
         {exc}"
     
 async def research(query):

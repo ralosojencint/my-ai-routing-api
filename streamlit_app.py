@@ -235,7 +235,7 @@ footer {
 }
 
 header {
-    visibility: hidden;
+    visibility: visible;
 }
 
 .block-container {

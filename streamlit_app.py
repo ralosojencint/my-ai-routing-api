@@ -1314,7 +1314,6 @@ Do not invent information.
 # ============================================================
 
 async def run_nexus(query):
-async def run_nexus(query):
 
     start = time.perf_counter()
 
@@ -1427,13 +1426,54 @@ async def run_nexus(query):
 
         data = data_agent()
 
+    start = time.perf_counter()
+
+    st.session_state.agent_log = []
+
+    safety = safety_agent(query)
+
+    st.session_state.agent_log.append(
+        "Safety check complete"
+    )
+
+    if not safety["safe"]:
+        return {
+            "answer": "I can't help with instructions that facilitate harmful activity.",
+            "sources": [],
+            "execution": [],
+            "latency": time.perf_counter() - start
+        }
+
+    plan = await create_plan(query)
+    st.session_state.last_plan = plan
+
+    st.session_state.agent_log.append(
+        "Orchestrator plan created"
+    )
+
+    local_context = ""
+
+    if plan.get("needs_rag"):
+        local_context = rag_context(query)
+        st.session_state.agent_log.append(
+            "Document retrieval complete"
+        )
+
+    research = {}
+
+    if plan.get("needs_web"):
+        research = await research_agent(query)
+        st.session_state.agent_log.append(
+            "Web research complete"
+        )
+
+    data = {}
+
+    if plan.get("needs_data"):
+        data = data_agent()
         st.session_state.agent_log.append(
             "Data analysis complete"
         )
-
-    # --------------------------------------------------------
-    # ONE Gemini reasoning call
-    # --------------------------------------------------------
 
     draft = await reasoning_agent(
         query,
@@ -1444,19 +1484,38 @@ async def run_nexus(query):
         local_context
     )
 
-    st.session_state.agent_log.append(
-        "Response generated"
-    )
+    execution = []
+
+    code_blocks = extract_python(draft)
+
+    if plan.get("needs_verification") or code_blocks:
+        for code in code_blocks[:3]:
+            result = await asyncio.to_thread(
+                verify_code,
+                code
+            )
+
+            execution.append({
+                "code": code,
+                "result": result
+            })
+
+        if execution:
+            draft = await self_correct(
+                query,
+                draft,
+                execution
+            )
+
+            st.session_state.agent_log.append(
+                "Verification complete"
+            )
 
     return {
         "answer": draft,
-        "sources": research.get(
-            "results",
-            []
-        ),
-        "execution": [],
-        "latency":
-            time.perf_counter() - start
+        "sources": research.get("results", []),
+        "execution": execution,
+        "latency": time.perf_counter() - start
     }
 
 

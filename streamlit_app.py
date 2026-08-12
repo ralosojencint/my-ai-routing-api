@@ -230,14 +230,15 @@ async def gemini_text(prompt, images=None):
     for _, image in images or []:
         contents.append(image)
 
-    try:
+        try:
         response = await asyncio.to_thread(
             client.models.generate_content,
             model=MODEL,
             contents=contents,
         )
         return response.text or "I received no text response."
-        except Exception as exc:
+
+    except Exception as exc:
         error_text = str(exc)
 
         if "503" in error_text or "UNAVAILABLE" in error_text:
@@ -259,8 +260,7 @@ async def gemini_text(prompt, images=None):
 
             return "NEXUS is temporarily experiencing high demand. Please try again in a moment."
 
-        return f"Gemini error:
-        {exc}"
+        return f"Gemini error: {exc}"
     
 async def research(query):
     client = tavily_client()

@@ -500,7 +500,7 @@ if chat_value:
 
     attached_images = index_files(uploaded_files)
 
-    if not user_text and attached_images:
+    if not user_text and uploaded_files:
         user_text = "Please analyze the attached image(s)."
 
     if not user_text:

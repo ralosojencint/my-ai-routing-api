@@ -220,7 +220,7 @@ def retrieve_documents(query, limit=8):
     return [doc for _, doc in scored[:limit]]
 
 # -------------------- Agents --------------------
-
+ 
 async def gemini_text(prompt, images=None):
     client = gemini_client()
     if client is None:
@@ -238,8 +238,7 @@ async def gemini_text(prompt, images=None):
         )
         return response.text or "I received no text response."
     except Exception as exc:
-        return f"Gemini error:
-        {exc}"
+        return f"Gemini error: {exc}"
     
 async def research(query):
     client = tavily_client()

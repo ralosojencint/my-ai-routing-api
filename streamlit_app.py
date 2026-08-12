@@ -27,11 +27,11 @@ except ImportError:
 
 
 # ============================================================
-# NEXUS AI
+# NEXUS
 # ============================================================
 
 APP_NAME = "NEXUS"
-APP_VERSION = "6.0"
+APP_VERSION = "7.0"
 
 MAX_FILE_MB = 25
 MAX_CHUNK_SIZE = 1200
@@ -47,7 +47,7 @@ MAX_HISTORY = 10
 
 st.set_page_config(
     page_title="NEXUS",
-    page_icon=None,
+    page_icon="✦",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -122,14 +122,15 @@ def discover_gemini_model():
         return None
 
     preferred = [
-    "gemini-3.5-flash",
-    "gemini-3.1-flash-lite",
-    "gemini-3.6-flash",
+        "gemini-3.5-flash",
+        "gemini-3.6-flash",
+        "gemini-3.5-flash-lite",
     ]
 
     available = {}
 
     try:
+
         models = client.models.list()
 
         for model in models:
@@ -153,7 +154,7 @@ def discover_gemini_model():
     except Exception:
         available = {}
 
-    # Prefer known production-capable models
+    # Prefer the requested models
     for candidate in preferred:
 
         if candidate in available:
@@ -162,7 +163,7 @@ def discover_gemini_model():
 
             return candidate
 
-    # Fallback to any Gemini generation model
+    # Fallback
     for name in available:
 
         lower = name.lower()
@@ -190,7 +191,7 @@ def require_model():
 
         raise RuntimeError(
             "No compatible Gemini generation model "
-            "is available to this API key."
+            "is available for this API key."
         )
 
     return model
@@ -215,7 +216,7 @@ def get_tavily_client():
 
 
 # ============================================================
-# CLEAN UI
+# UI
 # ============================================================
 
 st.markdown(
@@ -229,34 +230,34 @@ header {
 }
 
 .block-container {
-    max-width: 1100px;
+    max-width: 1150px;
     padding-top: 2rem;
     padding-bottom: 7rem;
 }
 
-/* NEXUS BRAND */
+/* BRAND */
 
 .nexus-brand {
-    font-size: 34px;
+    font-size: 38px;
     font-weight: 800;
-    letter-spacing: -1.5px;
-    margin-bottom: 3px;
+    letter-spacing: -2px;
+    margin-bottom: 2px;
 }
 
 .nexus-description {
     font-size: 14px;
     color: #888;
-    margin-bottom: 30px;
+    margin-bottom: 28px;
 }
 
 /* SIDEBAR */
 
 section[data-testid="stSidebar"] {
-    border-right: 1px solid rgba(255,255,255,.08);
+    border-right: 1px solid rgba(128,128,128,.15);
 }
 
 .sidebar-brand {
-    font-size: 24px;
+    font-size: 25px;
     font-weight: 800;
     letter-spacing: -1px;
 }
@@ -269,7 +270,8 @@ section[data-testid="stSidebar"] {
 /* CHAT */
 
 [data-testid="stChatMessage"] {
-    padding: 1.2rem 0;
+    padding-top: 1rem;
+    padding-bottom: 1rem;
 }
 
 [data-testid="stChatMessageContent"] {
@@ -318,7 +320,7 @@ section[data-testid="stSidebar"] {
     margin-top: 6px;
 }
 
-/* STATUS DOT */
+/* DOT */
 
 .dot {
     display: inline-block;
@@ -353,7 +355,7 @@ section[data-testid="stSidebar"] {
     overflow-wrap: anywhere;
 }
 
-/* AGENT ACTIVITY */
+/* ACTIVITY */
 
 .agent-row {
     padding: 9px 0;
@@ -383,7 +385,7 @@ section[data-testid="stSidebar"] {
     }
 
     .nexus-brand {
-        font-size: 28px;
+        font-size: 30px;
     }
 
     .status-card {
@@ -403,6 +405,7 @@ section[data-testid="stSidebar"] {
 # ============================================================
 
 def normalize(text):
+
     return re.sub(
         r"\s+",
         " ",
@@ -411,6 +414,7 @@ def normalize(text):
 
 
 def tokens(text):
+
     return re.findall(
         r"[a-zA-Z0-9_]+",
         normalize(text).lower(),
@@ -432,12 +436,13 @@ def truncate(text, limit):
 
 
 # ============================================================
-# DOCUMENTS
+# DOCUMENT EXTRACTION
 # ============================================================
 
 def extract_pdf(file):
 
     if PdfReader is None:
+
         raise RuntimeError(
             "pypdf is not installed."
         )
@@ -449,9 +454,11 @@ def extract_pdf(file):
     for page in reader.pages:
 
         try:
+
             pages.append(
                 page.extract_text() or ""
             )
+
         except Exception:
             pass
 
@@ -463,8 +470,11 @@ def extract_txt(file):
     raw = file.read()
 
     try:
+
         return raw.decode("utf-8")
+
     except UnicodeDecodeError:
+
         return raw.decode(
             "latin-1",
             errors="replace"
@@ -577,6 +587,7 @@ def retrieve_documents(
         )
 
         if score > 0:
+
             scored.append(
                 (
                     score,
@@ -661,7 +672,7 @@ def safety_agent(query):
 
 
 # ============================================================
-# RESEARCH
+# WEB RESEARCH
 # ============================================================
 
 async def research_agent(query):
@@ -736,7 +747,7 @@ async def research_agent(query):
 
 
 # ============================================================
-# DATA AGENT
+# DATA
 # ============================================================
 
 def data_agent():
@@ -806,94 +817,53 @@ def data_agent():
 
 
 # ============================================================
-# ORCHESTRATOR
+# SIMPLE ROUTER
 # ============================================================
 
-async def create_plan(query):
+def create_local_plan(query):
 
-    client = get_gemini_client()
-    model = require_model()
+    lower = query.lower()
 
-    prompt = f"""
-You are the NEXUS task orchestrator.
+    web_keywords = [
+        "current",
+        "today",
+        "latest",
+        "recent",
+        "news",
+        "price",
+        "stock",
+        "bitcoin",
+        "crypto",
+        "weather",
+        "live",
+        "market",
+        "2026",
+        "exchange rate",
+        "forecast",
+    ]
 
-Determine which agents are needed.
-
-Available agents:
-
-research:
-Live web research through Tavily.
-
-data:
-Analyze uploaded CSV files.
-
-rag:
-Retrieve relevant uploaded document context.
-
-reasoning:
-General reasoning and synthesis.
-
-Return ONLY JSON.
-
-Schema:
-
-{{
-  "complexity": "simple|moderate|complex",
-  "needs_web": true,
-  "needs_data": false,
-  "needs_rag": false,
-  "needs_verification": false,
-  "subtasks": [
-    {{
-      "agent": "research|data|rag|reasoning",
-      "task": "specific task"
-    }}
-  ]
-}}
-
-User:
-{query}
-"""
-
-    response = await asyncio.to_thread(
-        client.models.generate_content,
-        model=model,
-        contents=prompt
+    needs_web = any(
+        word in lower
+        for word in web_keywords
     )
 
-    text = response.text or ""
-
-    match = re.search(
-        r"\{.*\}",
-        text,
-        re.DOTALL
+    needs_rag = bool(
+        st.session_state.documents
     )
 
-    if match:
-
-        try:
-            return json.loads(
-                match.group()
-            )
-        except Exception:
-            pass
+    needs_data = bool(
+        st.session_state.csv_datasets
+    )
 
     return {
         "complexity": "simple",
-        "needs_web": False,
-        "needs_data": bool(
-            st.session_state.csv_datasets
+        "needs_web": (
+            needs_web
+            and bool(TAVILY_API_KEY)
         ),
-        "needs_rag": bool(
-            st.session_state.documents
-        ),
-        "needs_verification": False,
-        "subtasks": [
-            {
-                "agent": "reasoning",
-                "task": "Answer directly."
-            }
-        ]
+        "needs_data": needs_data,
+        "needs_rag": needs_rag,
+        "subtasks": []
     }
 
 
@@ -972,12 +942,13 @@ async def reasoning_agent(
     prompt = f"""
 You are NEXUS, a professional AI assistant.
 
-Answer the user's request completely and directly.
+Your job is to answer the user's request accurately,
+clearly, and directly.
 
-USER:
+USER REQUEST:
 {query}
 
-ORCHESTRATOR:
+NEXUS ROUTING:
 {json.dumps(plan, indent=2)}
 
 SAFETY:
@@ -986,28 +957,33 @@ SAFETY:
 WEB RESEARCH:
 {format_research(research)}
 
-DATA:
+UPLOADED DATA:
 {json.dumps(data, indent=2)}
 
-LOCAL DOCUMENTS:
+UPLOADED DOCUMENT CONTEXT:
 {local_context}
 
 MEMORY:
 {st.session_state.memory_summary}
 
-RECENT CHAT:
+RECENT CONVERSATION:
 {conversation}
 
-Rules:
+Instructions:
 
-- Give a complete answer.
-- Do not intentionally truncate the response.
-- Do not mention internal agents unless useful.
-- Do not invent sources.
-- Use supplied sources when relevant.
-- Clearly distinguish facts from uncertainty.
-- If calculations need checking, create a small Python
-  calculation block.
+1. Answer the user directly.
+2. Use web research when supplied.
+3. Use uploaded documents when relevant.
+4. Use uploaded CSV data when relevant.
+5. Do not invent facts or sources.
+6. If information is uncertain, say so.
+7. For simple arithmetic, calculate accurately.
+8. Keep the response readable.
+9. Do not mention internal routing unless useful.
+10. Do not claim to have live information unless live research
+    was actually provided.
+11. If the user asks for code, provide working code.
+12. If the user asks for an explanation, explain it simply.
 """
 
     response = await asyncio.to_thread(
@@ -1118,6 +1094,7 @@ def verify_code(code):
     try:
 
         if len(code) > 10000:
+
             raise CodeSafetyError(
                 "Code block is too large."
             )
@@ -1243,69 +1220,7 @@ def extract_python(text):
 
 
 # ============================================================
-# SELF CORRECTION
-# ============================================================
-
-async def self_correct(
-    query,
-    draft,
-    verification
-):
-
-    if not verification:
-        return draft
-
-    client = get_gemini_client()
-    model = require_model()
-
-    feedback = []
-
-    for item in verification:
-
-        feedback.append(
-            f"""
-CODE:
-{item["code"]}
-
-SUCCESS:
-{item["result"]["success"]}
-
-OUTPUT:
-{item["result"]["stdout"]}
-
-ERROR:
-{item["result"]["stderr"]}
-"""
-        )
-
-    prompt = f"""
-Correct the answer below.
-
-Original request:
-{query}
-
-Draft:
-{draft}
-
-Verification:
-{chr(10).join(feedback)}
-
-Return a complete corrected answer.
-Do not hide errors.
-Do not invent information.
-"""
-
-    response = await asyncio.to_thread(
-        client.models.generate_content,
-        model=model,
-        contents=prompt
-    )
-
-    return response.text or draft
-
-
-# ============================================================
-# MASTER ORCHESTRATOR
+# MASTER NEXUS
 # ============================================================
 
 async def run_nexus(query):
@@ -1314,7 +1229,10 @@ async def run_nexus(query):
 
     st.session_state.agent_log = []
 
-    # Safety check
+    # --------------------------------------------------------
+    # SAFETY
+    # --------------------------------------------------------
+
     safety = safety_agent(query)
 
     st.session_state.agent_log.append(
@@ -1322,6 +1240,7 @@ async def run_nexus(query):
     )
 
     if not safety["safe"]:
+
         return {
             "answer":
                 "I can't help with instructions "
@@ -1333,142 +1252,72 @@ async def run_nexus(query):
         }
 
     # --------------------------------------------------------
-    # Lightweight routing — no Gemini call needed
+    # ROUTING
     # --------------------------------------------------------
 
-    lower_query = query.lower()
-
-    web_keywords = [
-        "current",
-        "today",
-        "latest",
-        "recent",
-        "news",
-        "price",
-        "stock",
-        "bitcoin",
-        "weather",
-        "live",
-        "2026"
-    ]
-
-    needs_web = (
-        TAVILY_API_KEY
-        and any(
-            word in lower_query
-            for word in web_keywords
-        )
+    plan = create_local_plan(
+        query
     )
-
-    needs_rag = bool(
-        st.session_state.documents
-    )
-
-    needs_data = bool(
-        st.session_state.csv_datasets
-    )
-
-    plan = {
-        "complexity": "simple",
-        "needs_web": bool(needs_web),
-        "needs_data": needs_data,
-        "needs_rag": needs_rag,
-        "needs_verification": False,
-        "subtasks": []
-    }
 
     st.session_state.last_plan = plan
 
     st.session_state.agent_log.append(
-        "Lightweight routing complete"
+        "Request routing complete"
     )
 
     # --------------------------------------------------------
-    # Document retrieval
+    # DOCUMENTS
     # --------------------------------------------------------
 
     local_context = ""
 
-    if needs_rag:
+    if plan["needs_rag"]:
 
-        local_context = rag_context(query)
+        local_context = rag_context(
+            query
+        )
 
         st.session_state.agent_log.append(
             "Document retrieval complete"
         )
 
     # --------------------------------------------------------
-    # Web research
+    # WEB
     # --------------------------------------------------------
 
     research = {}
 
-    if needs_web:
+    if plan["needs_web"]:
 
-        research = await research_agent(query)
+        research = await research_agent(
+            query
+        )
 
         st.session_state.agent_log.append(
             "Web research complete"
         )
 
     # --------------------------------------------------------
-    # Data analysis
+    # DATA
     # --------------------------------------------------------
 
     data = {}
 
-    if needs_data:
+    if plan["needs_data"]:
 
         data = data_agent()
 
-    start = time.perf_counter()
-
-    st.session_state.agent_log = []
-
-    safety = safety_agent(query)
-
-    st.session_state.agent_log.append(
-        "Safety check complete"
-    )
-
-    if not safety["safe"]:
-        return {
-            "answer": "I can't help with instructions that facilitate harmful activity.",
-            "sources": [],
-            "execution": [],
-            "latency": time.perf_counter() - start
-        }
-
-    plan = await create_plan(query)
-    st.session_state.last_plan = plan
-
-    st.session_state.agent_log.append(
-        "Orchestrator plan created"
-    )
-
-    local_context = ""
-
-    if plan.get("needs_rag"):
-        local_context = rag_context(query)
-        st.session_state.agent_log.append(
-            "Document retrieval complete"
-        )
-
-    research = {}
-
-    if plan.get("needs_web"):
-        research = await research_agent(query)
-        st.session_state.agent_log.append(
-            "Web research complete"
-        )
-
-    data = {}
-
-    if plan.get("needs_data"):
-        data = data_agent()
         st.session_state.agent_log.append(
             "Data analysis complete"
         )
+
+    # --------------------------------------------------------
+    # GEMINI
+    # --------------------------------------------------------
+
+    st.session_state.agent_log.append(
+        "Generating response"
+    )
 
     draft = await reasoning_agent(
         query,
@@ -1479,38 +1328,46 @@ async def run_nexus(query):
         local_context
     )
 
+    # --------------------------------------------------------
+    # OPTIONAL CODE VERIFICATION
+    # --------------------------------------------------------
+
     execution = []
 
-    code_blocks = extract_python(draft)
+    code_blocks = extract_python(
+        draft
+    )
 
-    if plan.get("needs_verification") or code_blocks:
+    if code_blocks:
+
         for code in code_blocks[:3]:
+
             result = await asyncio.to_thread(
                 verify_code,
                 code
             )
 
-            execution.append({
-                "code": code,
-                "result": result
-            })
-
-        if execution:
-            draft = await self_correct(
-                query,
-                draft,
-                execution
+            execution.append(
+                {
+                    "code": code,
+                    "result": result
+                }
             )
 
-            st.session_state.agent_log.append(
-                "Verification complete"
-            )
+        st.session_state.agent_log.append(
+            "Calculation verification complete"
+        )
 
     return {
         "answer": draft,
-        "sources": research.get("results", []),
+        "sources":
+            research.get(
+                "results",
+                []
+            ),
         "execution": execution,
-        "latency": time.perf_counter() - start
+        "latency":
+            time.perf_counter() - start
     }
 
 
@@ -1523,9 +1380,14 @@ async def compress_memory():
     if len(
         st.session_state.messages
     ) < 12:
+
         return
 
     client = get_gemini_client()
+
+    if client is None:
+        return
+
     model = require_model()
 
     old = (
@@ -1590,7 +1452,7 @@ with st.sidebar:
     st.divider()
 
     if st.button(
-        "New conversation",
+        "＋ New conversation",
         use_container_width=True
     ):
 
@@ -1612,8 +1474,11 @@ with st.sidebar:
     if GEMINI_API_KEY:
 
         try:
+
             model = discover_gemini_model()
+
         except Exception:
+
             model = None
 
     if model:
@@ -1652,12 +1517,16 @@ with st.sidebar:
 
     st.write("")
 
+    # WEB STATUS
+
     if TAVILY_API_KEY:
 
         st.markdown(
             """
             <div class="status-card">
-                <div class="status-label">Web research</div>
+                <div class="status-label">
+                    Web research
+                </div>
                 <div class="status-value">
                     <span class="dot"></span>
                     Available
@@ -1672,7 +1541,9 @@ with st.sidebar:
         st.markdown(
             """
             <div class="status-card">
-                <div class="status-label">Web research</div>
+                <div class="status-label">
+                    Web research
+                </div>
                 <div class="status-value">
                     <span class="dot dot-off"></span>
                     Unavailable
@@ -1683,6 +1554,8 @@ with st.sidebar:
         )
 
     st.divider()
+
+    # KNOWLEDGE
 
     st.markdown(
         "**Knowledge**"
@@ -1787,7 +1660,7 @@ with st.sidebar:
 
     st.caption(
         f"{len(st.session_state.documents)} "
-        "document chunks"
+        "document chunks indexed"
     )
 
     if st.button(
@@ -1801,6 +1674,8 @@ with st.sidebar:
         st.rerun()
 
     st.divider()
+
+    # MEMORY
 
     st.markdown(
         "**Memory**"
@@ -1819,8 +1694,8 @@ with st.sidebar:
     else:
 
         st.caption(
-            "Memory will appear here as the "
-            "conversation grows."
+            "Memory will appear here as "
+            "the conversation grows."
         )
 
 
@@ -1843,7 +1718,7 @@ st.markdown(
 
 
 # ============================================================
-# STATUS
+# STATUS CARDS
 # ============================================================
 
 col1, col2, col3 = st.columns(3)
@@ -1853,10 +1728,11 @@ with col1:
     st.markdown(
         f"""
         <div class="status-card">
-            <div class="status-label">Model</div>
+            <div class="status-label">
+                Model
+            </div>
             <div class="status-value">
-                {st.session_state.selected_model
-                 or "Auto"}
+                {st.session_state.selected_model or "Auto"}
             </div>
         </div>
         """,
@@ -1868,7 +1744,9 @@ with col2:
     st.markdown(
         f"""
         <div class="status-card">
-            <div class="status-label">Knowledge</div>
+            <div class="status-label">
+                Knowledge
+            </div>
             <div class="status-value">
                 {len(st.session_state.documents)}
                 chunks indexed
@@ -1883,7 +1761,9 @@ with col3:
     st.markdown(
         f"""
         <div class="status-card">
-            <div class="status-label">Requests</div>
+            <div class="status-label">
+                Requests
+            </div>
             <div class="status-value">
                 {st.session_state.request_count}
             </div>
@@ -1897,7 +1777,7 @@ st.write("")
 
 
 # ============================================================
-# CHAT
+# CHAT HISTORY
 # ============================================================
 
 for message in st.session_state.messages:
@@ -1912,7 +1792,7 @@ for message in st.session_state.messages:
 
 
 # ============================================================
-# AGENT ACTIVITY
+# ACTIVITY
 # ============================================================
 
 if st.session_state.agent_log:
@@ -1992,14 +1872,39 @@ if query:
                     state="error"
                 )
 
-                st.error(
+                error_text = (
                     f"{type(exc).__name__}: {exc}"
                 )
+
+                # Give a much clearer quota message
+                if (
+                    "429" in error_text
+                    or "RESOURCE_EXHAUSTED"
+                    in error_text
+                ):
+
+                    st.error(
+                        "Gemini API quota has been "
+                        "exhausted. The code is running, "
+                        "but Google is currently refusing "
+                        "the Gemini request because the "
+                        "API project's quota has been reached."
+                    )
+
+                    st.caption(
+                        error_text
+                    )
+
+                else:
+
+                    st.error(
+                        error_text
+                    )
 
                 st.stop()
 
         # ----------------------------------------------------
-        # FINAL ANSWER
+        # ANSWER
         # ----------------------------------------------------
 
         final_answer = result["answer"]
@@ -2104,6 +2009,10 @@ if query:
                             verification["stdout"]
                         )
 
+    # --------------------------------------------------------
+    # SAVE ASSISTANT MESSAGE
+    # --------------------------------------------------------
+
     st.session_state.messages.append(
         {
             "role": "assistant",
@@ -2116,6 +2025,10 @@ if query:
     st.session_state.total_latency += (
         result["latency"]
     )
+
+    # --------------------------------------------------------
+    # MEMORY
+    # --------------------------------------------------------
 
     if len(
         st.session_state.messages

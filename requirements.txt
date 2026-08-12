@@ -1,7 +1,0 @@
-streamlit>=1.40
-google-genai>=1.0
-pandas>=2.0
-numpy>=1.26
-pypdf>=5.0
-tavily-python>=0.5
-python-dotenv>=1.0

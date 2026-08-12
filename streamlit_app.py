@@ -222,117 +222,103 @@ st.markdown(
     """
 <style>
 
-/* ---------- GLOBAL ---------- */
-
-#MainMenu {
-    visibility: hidden;
-}
-
-footer {
-    visibility: hidden;
-}
-
+#MainMenu,
+footer,
 header {
-    visibility: visible;
+    visibility: hidden;
 }
 
 .block-container {
-    max-width: 1180px;
+    max-width: 1100px;
     padding-top: 2rem;
     padding-bottom: 7rem;
 }
 
-/* ---------- TYPOGRAPHY ---------- */
-
-html, body, [class*="css"] {
-    font-family:
-        Inter,
-        -apple-system,
-        BlinkMacSystemFont,
-        "Segoe UI",
-        sans-serif;
-}
+/* NEXUS BRAND */
 
 .nexus-brand {
-    font-size: 28px;
-    font-weight: 700;
-    letter-spacing: -0.8px;
-    margin-bottom: 2px;
+    font-size: 34px;
+    font-weight: 800;
+    letter-spacing: -1.5px;
+    margin-bottom: 3px;
 }
 
 .nexus-description {
-    font-size: 13px;
-    color: #777;
-    margin-bottom: 28px;
+    font-size: 14px;
+    color: #888;
+    margin-bottom: 30px;
 }
 
-/* ---------- SIDEBAR ---------- */
+/* SIDEBAR */
 
 section[data-testid="stSidebar"] {
-    border-right: 1px solid rgba(128,128,128,.16);
-}
-
-section[data-testid="stSidebar"] > div {
-    padding-top: 2rem;
+    border-right: 1px solid rgba(255,255,255,.08);
 }
 
 .sidebar-brand {
-    font-size: 21px;
-    font-weight: 700;
-    letter-spacing: -0.5px;
-    margin-bottom: 4px;
+    font-size: 24px;
+    font-weight: 800;
+    letter-spacing: -1px;
 }
 
 .sidebar-muted {
-    color: #858585;
+    color: #888;
     font-size: 12px;
 }
 
-/* ---------- CHAT ---------- */
+/* CHAT */
 
 [data-testid="stChatMessage"] {
-    padding: 1rem 0;
+    padding: 1.2rem 0;
 }
 
 [data-testid="stChatMessageContent"] {
-    line-height: 1.65;
+    line-height: 1.7;
+    font-size: 15px;
 }
 
 [data-testid="stChatMessageAvatar"] {
     display: none;
 }
 
-/* ---------- INPUT ---------- */
+/* INPUT */
 
 [data-testid="stChatInput"] {
-    border-radius: 16px;
+    border-radius: 18px;
 }
 
 [data-testid="stChatInput"] textarea {
     font-size: 15px;
 }
 
-/* ---------- CARDS ---------- */
+/* CARDS */
 
 .status-card {
     border: 1px solid rgba(128,128,128,.18);
-    border-radius: 12px;
-    padding: 14px 16px;
-    background: rgba(128,128,128,.025);
+    border-radius: 16px;
+    padding: 17px 18px;
+    background: rgba(128,128,128,.035);
+    transition: .2s ease;
+}
+
+.status-card:hover {
+    border-color: rgba(128,128,128,.35);
 }
 
 .status-label {
-    font-size: 11px;
-    color: #858585;
+    font-size: 10px;
+    color: #888;
     text-transform: uppercase;
-    letter-spacing: .7px;
+    letter-spacing: 1px;
 }
 
 .status-value {
     font-size: 15px;
-    font-weight: 600;
-    margin-top: 4px;
+    font-weight: 650;
+    margin-top: 6px;
 }
+
+/* STATUS DOT */
 
 .dot {
     display: inline-block;
@@ -347,13 +333,13 @@ section[data-testid="stSidebar"] > div {
     background: #b54a4a;
 }
 
-/* ---------- SOURCES ---------- */
+/* SOURCES */
 
 .source {
     border: 1px solid rgba(128,128,128,.18);
-    border-radius: 10px;
-    padding: 11px 13px;
-    margin: 7px 0;
+    border-radius: 12px;
+    padding: 13px 15px;
+    margin: 8px 0;
 }
 
 .source-title {
@@ -363,14 +349,14 @@ section[data-testid="stSidebar"] > div {
 
 .source-url {
     font-size: 11px;
-    color: #858585;
+    color: #888;
     overflow-wrap: anywhere;
 }
 
-/* ---------- AGENTS ---------- */
+/* AGENT ACTIVITY */
 
 .agent-row {
-    padding: 7px 0;
+    padding: 9px 0;
     font-size: 13px;
     border-bottom: 1px solid rgba(128,128,128,.10);
 }
@@ -379,7 +365,14 @@ section[data-testid="stSidebar"] > div {
     border-bottom: none;
 }
 
-/* ---------- MOBILE ---------- */
+/* BUTTONS */
+
+.stButton > button {
+    border-radius: 12px;
+    min-height: 42px;
+}
+
+/* MOBILE */
 
 @media (max-width: 700px) {
 
@@ -390,7 +383,11 @@ section[data-testid="stSidebar"] > div {
     }
 
     .nexus-brand {
-        font-size: 24px;
+        font-size: 28px;
+    }
+
+    .status-card {
+        padding: 13px;
     }
 
 }

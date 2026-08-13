@@ -240,17 +240,23 @@ def index_files(files):
 
         if ext in {".png", ".jpg", ".jpeg", ".webp"}:
             if Image is not None:
-                                try:
+                try:
                     attached_images.append(
                         (uploaded.name, Image.open(uploaded).convert("RGB"))
                     )
                 except Exception as exc:
-                    print(f"NEXUS IMAGE ERROR: {uploaded.name}: {exc}", flush=True)
-                    st.warning(f"{uploaded.name}: couldn't be read as an image ({exc}).")
+                    print(
+                        f"NEXUS IMAGE ERROR: {uploaded.name}: {exc}",
+                        flush=True
+                    )
+                    st.warning(
+                        f"{uploaded.name}: couldn't be read as an image ({exc})."
+                    )
             continue
 
         try:
             text, error = read_uploaded_file(uploaded)
+
             if error:
                 st.warning(f"{uploaded.name}: {error}")
                 continue
@@ -261,12 +267,14 @@ def index_files(files):
                     d for d in st.session_state.documents
                     if d["name"] != uploaded.name
                 ]
+
                 for i, chunk in enumerate(make_chunks(text)):
                     st.session_state.documents.append({
                         "name": uploaded.name,
                         "chunk": i,
                         "text": chunk,
                     })
+
         except Exception as exc:
             st.warning(f"{uploaded.name}: {exc}")
 

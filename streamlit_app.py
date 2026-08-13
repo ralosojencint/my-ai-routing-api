@@ -223,22 +223,69 @@ def retrieve_documents(query, limit=8):
  
 async def gemini_text(prompt, images=None):
     client = gemini_client()
+
     if client is None:
-        return "Gemini is not connected. Add GEMINI_API_KEY in Streamlit Secrets."
+        return "⚠️ Gemini is not connected. Please check your GEMINI_API_KEY in Streamlit Secrets."
 
     contents = [prompt]
+
     for _, image in images or []:
         contents.append(image)
 
-    try:
-        response = await asyncio.to_thread(
-            client.models.generate_content,
-            model=MODEL,
-            contents=contents,
-        )
-        return response.text or "I received no text response."
-    except Exception as exc:
-        return f"Gemini error: {exc}"
+    max_retries = 2
+
+    for attempt in range(max_retries + 1):
+        try:
+            response = await asyncio.to_thread(
+                client.models.generate_content,
+                model=MODEL,
+                contents=contents,
+            )
+
+            return response.text or "I received no text response."
+
+        except Exception as exc:
+            error_text = str(exc).lower()
+
+            # Gemini quota / rate-limit error
+            if (
+                "429" in error_text
+                or "resource_exhausted" in error_text
+                or "quota" in error_text
+                or "rate limit" in error_text
+            ):
+                # Retry briefly when Gemini provides a temporary rate limit.
+                if attempt < max_retries:
+                    wait_time = 5 * (attempt + 1)
+                    await asyncio.sleep(wait_time)
+                    continue
+
+                return (
+                    "⚠️ **NEXUS is temporarily out of Gemini requests.**\n\n"
+                    "The Gemini free-tier quota has been reached. "
+                    "Please wait for the quota to reset, then try again."
+                )
+
+            # Temporary server error
+            if (
+                "503" in error_text
+                or "service unavailable" in error_text
+                or "unavailable" in error_text
+            ):
+                if attempt < max_retries:
+                    wait_time = 3 * (attempt + 1)
+                    await asyncio.sleep(wait_time)
+                    continue
+
+                return (
+                    "⚠️ **Gemini is temporarily unavailable.**\n\n"
+                    "Please try your message again in a moment."
+                )
+
+            # Everything else
+            return f"⚠️ Gemini couldn't complete the request: {exc}"
+
+    return "⚠️ NEXUS couldn't complete the request. Please try again."
     
 async def research(query):
     client = tavily_client()

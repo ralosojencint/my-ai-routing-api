@@ -302,9 +302,15 @@ async def gemini_text(prompt, images=None):
     for attempt in range(max_retries + 1):
         try:
             # ==== TEMP TEST BLOCK - DELETE AFTER TESTING ====
-            if st.session_state.get("nexus_test_force_gemini_fail"):
-                raise RuntimeError("429 (NEXUS TEST) simulated Gemini quota failure")
-            # ==== END TEMP TEST BLOCK ====
+                if st.session_state.get("nexus_test_force_gemini_fail"):
+                    print("NEXUS TEST: Gemini failed → fallback to Groq", flush=True)
+                    groq_answer = await groq_text(prompt)
+                    if groq_answer.startswith("⚠️"):
+                        print("NEXUS TEST: Gemini failed → fallback to Groq → Groq FAILED:", groq_answer, flush=True)
+                        return "🧪 GROQ FALLBACK FAILED\n\n" + groq_answer
+                    print("NEXUS TEST: Gemini failed → fallback to Groq → Groq success", flush=True)
+                    return "🧪 GROQ FALLBACK SUCCESS\n\n" + groq_answer
+                # ==== END TEMP TEST BLOCK ====
 
             response = await asyncio.to_thread(
                 client.models.generate_content,

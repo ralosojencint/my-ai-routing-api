@@ -130,10 +130,10 @@ def tavily_client():
 
 @st.cache_resource
 def groq_client():
-    if not GROG_API_KEY or Groq is None:
+    if not GROQ_API_KEY or Groq is None:
         return None
     try:
-        return Groq(api_key=GROG_API_KEY)
+        return Groq(api_key=GROQ_API_KEY)
     except Exception:
         return None
 

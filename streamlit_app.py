@@ -271,6 +271,7 @@ async def gemini_text(prompt, images=None):
         return "⚠️ Gemini is not connected. Add GEMINI_API_KEY in Streamlit Secrets."
 
     contents = [prompt]
+
     for _, image in images or []:
         contents.append(image)
 
@@ -302,14 +303,14 @@ async def gemini_text(prompt, images=None):
 
                 groq_response = await groq_text(prompt)
 
-if groq_response:
-    if groq_response.startswith("__GROQ_ERROR__:"):
-        return (
-            "⚠️ **Groq fallback error**\n\n"
-            + groq_response.replace("__GROQ_ERROR__:", "").strip()
-        )
+                if groq_response:
+                    if groq_response.startswith("__GROQ_ERROR__:"):
+                        return (
+                            "⚠️ **Groq fallback error**\n\n"
+                            + groq_response.replace("__GROQ_ERROR__:", "").strip()
+                        )
 
-    return groq_response
+                    return groq_response
 
                 return (
                     "⚠️ **NEXUS is temporarily out of Gemini requests.**\n\n"
@@ -336,7 +337,6 @@ if groq_response:
             return f"⚠️ Gemini couldn't complete the request: {exc}"
 
     return "⚠️ NEXUS couldn't complete the request. Please try again."
-    
 async def research(query):
     client = tavily_client()
     if client is None:

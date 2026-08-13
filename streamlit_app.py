@@ -153,10 +153,11 @@ async def groq_text(prompt):
 
     try:
         client = groq_client()
-if client is None:
-    return "⚠️ Groq client could not be initialized."
-    
+        if client is None:
+            return "⚠️ Groq client could not be initialized."
+
         response = await asyncio.to_thread(
+            
             client.chat.completions.create,
             model="llama-3.3-70b-versatile",
             messages=[

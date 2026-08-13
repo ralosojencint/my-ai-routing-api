@@ -16,6 +16,11 @@ except Exception:
     TavilyClient = None
 
 try:
+    from groq import Groq
+except Exception:
+    Groq = None
+    
+try:
     from pypdf import PdfReader
 except Exception:
     PdfReader = None

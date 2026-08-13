@@ -143,7 +143,7 @@ async def groq_text(prompt):
     client = groq_client()
 
     if client is None:
-        return "__GROQ_ERROR__: Groq client is not connected. Check GROG_API_KEY and the groq package."
+        return "__GROQ_ERROR__: Groq client could not be created. Check GROG_API_KEY."
 
     try:
         response = await asyncio.to_thread(
@@ -152,20 +152,30 @@ async def groq_text(prompt):
             messages=[
                 {
                     "role": "system",
-                    "content": "You are NEXUS, an intelligent AI assistant. Answer clearly, accurately, and directly."
+                    "content": (
+                        "You are NEXUS, an intelligent AI assistant. "
+                        "Answer clearly, accurately, and directly."
+                    ),
                 },
                 {
                     "role": "user",
-                    "content": prompt
-                }
+                    "content": prompt,
+                },
             ],
         )
 
-        return response.choices[0].message.content or None
+        if not response.choices:
+            return "__GROQ_ERROR__: Groq returned no choices."
+
+        answer = response.choices[0].message.content
+
+        if not answer:
+            return "__GROQ_ERROR__: Groq returned an empty response."
+
+        return answer
 
     except Exception as exc:
         return f"__GROQ_ERROR__: {exc}"
-
         
 # -------------------- File handling --------------------
 

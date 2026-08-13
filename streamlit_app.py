@@ -520,6 +520,16 @@ with st.sidebar:
     st.write(("🟢" if TAVILY_API_KEY else "⚪") + " Tavily")
     st.write(("🟢" if GROQ_API_KEY else "⚪") + " Groq")
 
+    # ==== TEMP TEST BLOCK - DELETE AFTER TESTING ====
+    st.divider()
+    st.markdown("### 🧪 Test mode (temporary)")
+    st.checkbox(
+        "Force Gemini failure (test Groq fallback)",
+        key="nexus_test_force_gemini_fail",
+    )
+    st.caption("Simulates a Gemini quota error to verify Groq fallback. Leave OFF for normal use.")
+    # ==== END TEMP TEST BLOCK ====
+
     st.divider()
     st.markdown("### Persistent memory")
     st.caption(f"{len(load_memories(100000))} saved interactions")

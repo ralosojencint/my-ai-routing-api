@@ -523,7 +523,7 @@ with st.sidebar:
     st.markdown("### Connections")
     st.write(("🟢" if GEMINI_API_KEY else "⚪") + " Gemini")
     st.write(("🟢" if TAVILY_API_KEY else "⚪") + " Tavily")
-    st.write(("🟢" if GROG_API_KEY else "⚪") + " Grog")
+    st.write(("🟢" if GROQ_API_KEY else "⚪") + " Groq")
 
     st.divider()
     st.markdown("### Persistent memory")

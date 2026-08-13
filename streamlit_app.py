@@ -323,21 +323,16 @@ async def gemini_text(prompt, images=None):
 
                 groq_response = await groq_text(prompt)
 
-                if groq_response:
-                    if groq_response.startswith("__GROQ_ERROR__:"):
-                        return (
-                            "⚠️ **Groq fallback error**\n\n"
-                            + groq_response.replace("__GROQ_ERROR__:", "").strip()
-                        )
+if not groq_response:
+    return "⚠️ Groq fallback returned an empty response."
 
-                    return groq_response
+if groq_response.startswith("__GROQ_ERROR__:"):
+    return (
+        "⚠️ **Groq fallback error**\n\n"
+        + groq_response.replace("__GROQ_ERROR__:", "").strip()
+    )
 
-                return (
-                    "⚠️ **NEXUS is temporarily out of Gemini requests.**\n\n"
-                    "Gemini's free-tier quota has been reached, "
-                    "and the backup AI is currently unavailable. "
-                    "Please try again later."
-                )
+return groq_response
 
             if (
                 "503" in error_text

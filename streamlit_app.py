@@ -349,7 +349,7 @@ async def gemini_text(prompt, images=None):
                     "Please try your message again in a moment."
                 )
 
-            return f"⚠️ Gemini couldn't complete the request: {exc}"
+            return f"⚠️ GEMINI IMAGE/REQUEST ERROR: {type(exc).__name__}: {exc}"
 
     return "⚠️ NEXUS couldn't complete the request. Please try again."
 async def research(query):

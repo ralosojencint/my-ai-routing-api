@@ -148,9 +148,13 @@ async def groq_text(prompt):
     client = groq_client()
 
     if client is None:
-        return "__GROQ_ERROR__: Groq client could not be created. Check GROG_API_KEY."
-
+    error = st.session_state.get(
+        "groq_client_error",
+        "Groq client could not be created."
+    )
+    return f"__GROQ_ERROR__: {error}"
     try:
+        
         response = await asyncio.to_thread(
             client.chat.completions.create,
             model="llama-3.3-70b-versatile",

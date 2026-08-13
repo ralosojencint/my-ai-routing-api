@@ -128,6 +128,43 @@ def tavily_client():
     except Exception:
         return None
 
+@st.cache_resource
+def groq_client():
+    if not GROG_API_KEY or Groq is None:
+        return None
+    try:
+        return Groq(api_key=GROG_API_KEY)
+    except Exception:
+        return None
+
+
+async def groq_text(prompt):
+    client = groq_client()
+
+    if client is None:
+        return None
+
+    try:
+        response = await asyncio.to_thread(
+            client.chat.completions.create,
+            model="llama-3.3-70b-versatile",
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are NEXUS, an intelligent AI assistant. Answer clearly, accurately, and directly."
+                },
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ],
+        )
+
+        return response.choices[0].message.content or None
+
+    except Exception:
+        return None
+        
 # -------------------- File handling --------------------
 
 def clean_text(text):

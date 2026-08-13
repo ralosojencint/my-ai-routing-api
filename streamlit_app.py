@@ -138,6 +138,7 @@ def groq_client():
         return None
 
 
+
 async def groq_text(prompt):
     client = groq_client()
 
@@ -163,7 +164,7 @@ async def groq_text(prompt):
         return response.choices[0].message.content or None
 
     except Exception as exc:
-    return f"__GROQ_ERROR__: {exc}"
+        return f"__GROQ_ERROR__: {exc}"
         
 # -------------------- File handling --------------------
 

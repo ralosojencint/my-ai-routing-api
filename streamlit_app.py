@@ -143,7 +143,7 @@ async def groq_text(prompt):
     client = groq_client()
 
     if client is None:
-        return None
+    return "__GROQ_ERROR__: Groq client is not connected. Check GROG_API_KEY and the groq package."
 
     try:
         response = await asyncio.to_thread(

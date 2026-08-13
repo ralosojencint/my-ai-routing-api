@@ -145,16 +145,15 @@ def groq_client():
 
 
 async def groq_text(prompt):
-    client = groq_client()
+    if not GROQ_API_KEY:
+        return "⚠️ GROQ_API_KEY is missing from Streamlit Secrets."
 
-    if client is None:
-        error = st.session_state.get(
-            "groq_client_error",
-            "Groq client could not be created."
-        )
-        return f"__GROQ_ERROR__: {error}"
+    if Groq is None:
+        return "⚠️ Groq package is not installed."
 
     try:
+        client = Groq(api_key=GROQ_API_KEY)
+
         response = await asyncio.to_thread(
             client.chat.completions.create,
             model="llama-3.3-70b-versatile",
@@ -174,17 +173,17 @@ async def groq_text(prompt):
         )
 
         if not response.choices:
-            return "__GROQ_ERROR__: Groq returned no choices."
+            return "⚠️ Groq returned no choices."
 
         answer = response.choices[0].message.content
 
         if not answer:
-            return "__GROQ_ERROR__: Groq returned an empty response."
+            return "⚠️ Groq returned an empty response."
 
         return answer
 
     except Exception as exc:
-        return f"__GROQ_ERROR__: {exc}"
+        return f"⚠️ GROQ API ERROR: {exc}"
         
 # -------------------- File handling --------------------
 

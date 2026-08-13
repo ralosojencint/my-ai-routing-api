@@ -304,7 +304,20 @@ async def gemini_text(prompt, images=None):
     contents = [prompt]
 
     for _, image in images or []:
-        contents.append(image)
+        try:
+            image_bytes = io.BytesIO()
+            image.save(image_bytes, format="JPEG")
+
+            contents.append(
+                {
+                    "inline_data": {
+                        "mime_type": "image/jpeg",
+                        "data": image_bytes.getvalue(),
+                    }
+                }
+            )
+        except Exception as exc:
+            return f"⚠️ Could not prepare image: {exc}"
 
     max_retries = 2
 
@@ -332,6 +345,13 @@ async def gemini_text(prompt, images=None):
                     await asyncio.sleep(wait_time)
                     continue
 
+                if images:
+                    return (
+                        "⚠️ Gemini is currently rate-limited, "
+                        "so the attached image could not be analyzed. "
+                        "Please try again in a moment."
+                    )
+
                 return await groq_text(prompt)
 
             if (
@@ -349,7 +369,7 @@ async def gemini_text(prompt, images=None):
                     "Please try your message again in a moment."
                 )
 
-            return f"⚠️ GEMINI IMAGE/REQUEST ERROR: {type(exc).__name__}: {exc}"
+            return f"⚠️ Gemini couldn't complete the request: {exc}"
 
     return "⚠️ NEXUS couldn't complete the request. Please try again."
 async def research(query):

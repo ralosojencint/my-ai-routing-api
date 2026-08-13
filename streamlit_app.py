@@ -302,11 +302,17 @@ async def gemini_text(prompt, images=None):
                     await asyncio.sleep(wait_time)
                     continue
 
-                return (
-                    "⚠️ **NEXUS is temporarily out of Gemini requests.**\n\n"
-                    "The Gemini free-tier quota has been reached. "
-                    "Please wait for the quota to reset, then try again."
-                )
+                groq_response = await groq_text(prompt)
+
+if groq_response:
+    return groq_response
+
+return (
+    "⚠️ **NEXUS is temporarily out of Gemini requests.**\n\n"
+    "Gemini's free-tier quota has been reached, "
+    "and the backup AI is currently unavailable. "
+    "Please try again later."
+)
 
             # Temporary server error
             if (

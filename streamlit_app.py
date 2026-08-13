@@ -240,12 +240,13 @@ def index_files(files):
 
         if ext in {".png", ".jpg", ".jpeg", ".webp"}:
             if Image is not None:
-                try:
+                                try:
                     attached_images.append(
                         (uploaded.name, Image.open(uploaded).convert("RGB"))
                     )
-                except Exception:
-                    pass
+                except Exception as exc:
+                    print(f"NEXUS IMAGE ERROR: {uploaded.name}: {exc}", flush=True)
+                    st.warning(f"{uploaded.name}: couldn't be read as an image ({exc}).")
             continue
 
         try:

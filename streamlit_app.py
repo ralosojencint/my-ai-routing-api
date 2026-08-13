@@ -301,8 +301,14 @@ async def gemini_text(prompt, images=None):
 
                 groq_response = await groq_text(prompt)
 
-                if groq_response:
-                    return groq_response
+if groq_response:
+    if groq_response.startswith("__GROQ_ERROR__:"):
+        return (
+            "⚠️ **Groq fallback error**\n\n"
+            + groq_response.replace("__GROQ_ERROR__:", "").strip()
+        )
+
+    return groq_response
 
                 return (
                     "⚠️ **NEXUS is temporarily out of Gemini requests.**\n\n"

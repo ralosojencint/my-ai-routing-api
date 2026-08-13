@@ -323,16 +323,16 @@ async def gemini_text(prompt, images=None):
 
                 groq_response = await groq_text(prompt)
 
-if not groq_response:
-    return "⚠️ Groq fallback returned an empty response."
+                if not groq_response:
+                    return "⚠️ Groq fallback returned an empty response."
 
-if groq_response.startswith("__GROQ_ERROR__:"):
-    return (
-        "⚠️ **Groq fallback error**\n\n"
-        + groq_response.replace("__GROQ_ERROR__:", "").strip()
-    )
+                if groq_response.startswith("__GROQ_ERROR__:"):
+                    return (
+                        "⚠️ **Groq fallback error**\n\n"
+                        + groq_response.replace("__GROQ_ERROR__:", "").strip()
+                    )
 
-return groq_response
+                return groq_response
 
             if (
                 "503" in error_text

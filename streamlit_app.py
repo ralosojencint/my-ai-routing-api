@@ -267,10 +267,9 @@ async def gemini_text(prompt, images=None):
     client = gemini_client()
 
     if client is None:
-        return "⚠️ Gemini is not connected. Please check your GEMINI_API_KEY in Streamlit Secrets."
+        return "⚠️ Gemini is not connected. Add GEMINI_API_KEY in Streamlit Secrets."
 
     contents = [prompt]
-
     for _, image in images or []:
         contents.append(image)
 
@@ -289,14 +288,12 @@ async def gemini_text(prompt, images=None):
         except Exception as exc:
             error_text = str(exc).lower()
 
-            # Gemini quota / rate-limit error
             if (
                 "429" in error_text
                 or "resource_exhausted" in error_text
                 or "quota" in error_text
                 or "rate limit" in error_text
             ):
-                # Retry briefly when Gemini provides a temporary rate limit.
                 if attempt < max_retries:
                     wait_time = 5 * (attempt + 1)
                     await asyncio.sleep(wait_time)
@@ -304,17 +301,16 @@ async def gemini_text(prompt, images=None):
 
                 groq_response = await groq_text(prompt)
 
-if groq_response:
-    return groq_response
+                if groq_response:
+                    return groq_response
 
-return (
-    "⚠️ **NEXUS is temporarily out of Gemini requests.**\n\n"
-    "Gemini's free-tier quota has been reached, "
-    "and the backup AI is currently unavailable. "
-    "Please try again later."
-)
+                return (
+                    "⚠️ **NEXUS is temporarily out of Gemini requests.**\n\n"
+                    "Gemini's free-tier quota has been reached, "
+                    "and the backup AI is currently unavailable. "
+                    "Please try again later."
+                )
 
-            # Temporary server error
             if (
                 "503" in error_text
                 or "service unavailable" in error_text
@@ -330,7 +326,6 @@ return (
                     "Please try your message again in a moment."
                 )
 
-            # Everything else
             return f"⚠️ Gemini couldn't complete the request: {exc}"
 
     return "⚠️ NEXUS couldn't complete the request. Please try again."

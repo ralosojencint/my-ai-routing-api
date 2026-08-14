@@ -350,12 +350,13 @@ async def gemini_text(prompt, images=None):
                 or "quota" in error_text
                 or "rate limit" in error_text
             ):
-                                if attempt < max_retries:
+                if attempt < max_retries:
                     wait_time = 5 * (attempt + 1)
                     await asyncio.sleep(wait_time)
                     continue
 
                 return await groq_text(prompt, images=images)
+
             if (
                 "503" in error_text
                 or "service unavailable" in error_text

@@ -675,9 +675,10 @@ if chat_value:
                     if url:
                         st.markdown(url)
 
-    st.session_state.messages.append({
+        st.session_state.messages.append({
         "role": "assistant",
         "content": result["answer"],
+        "sources": result["sources"],
     })
 
     st.rerun()

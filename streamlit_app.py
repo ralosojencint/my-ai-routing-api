@@ -459,6 +459,8 @@ IMPORTANT RULES FOR CURRENT / LATEST / RECENT QUESTIONS:
 - Prefer recent primary sources and reputable news sources when available.
 - Do not use your own prior knowledge to override the provided research.
 - Do not invent facts, dates, sources, URLs, citations, or publication details.
+- Do not create a "Sources" section in your answer.
+- Do not output source URLs or markdown links. The NEXUS interface will display the verified Tavily sources separately.
 - If the provided research does not contain enough recent information, say so instead of guessing.
 - Answer the user's actual question directly before giving background context.
 USER REQUEST:

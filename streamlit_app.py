@@ -153,49 +153,47 @@ async def groq_text(prompt, images=None):
 
     try:
         client = groq_client()
+
         if client is None:
             return "⚠️ Groq client could not be initialized."
 
+        user_content = [
+            {
+                "type": "text",
+                "text": prompt,
+            }
+        ]
+
+        for _, image in images or []:
+            buffer = io.BytesIO()
+            image.convert("RGB").save(buffer, format="JPEG")
+            image_data = base64.b64encode(
+                buffer.getvalue()
+            ).decode("utf-8")
+
+            user_content.append(
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:image/jpeg;base64,{image_data}"
+                    },
+                }
+            )
+
         response = await asyncio.to_thread(
-            
             client.chat.completions.create,
             model="qwen/qwen3.6-27b",
-            messages = [
-    {
-        "role": "system",
-        "content": (
-            "You are NEXUS, an intelligent AI assistant. "
-            "Answer clearly, accurately, and directly."
-        ),
-    }
-]
-
-user_content = [
-    {
-        "type": "text",
-        "text": prompt,
-    }
-]
-
-for _, image in images or []:
-    buffer = io.BytesIO()
-    image.save(buffer, format="JPEG")
-    encoded = base64.b64encode(buffer.getvalue()).decode("utf-8")
-
-    user_content.append({
-        "type": "image_url",
-        "image_url": {
-            "url": f"data:image/jpeg;base64,{encoded}"
-        }
-    })
-
-messages.append({
-    "role": "user",
-    "content": user_content,
-})
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are NEXUS, an intelligent AI assistant. "
+                        "Answer clearly, accurately, and directly."
+                    ),
+                },
                 {
                     "role": "user",
-                    "content": prompt,
+                    "content": user_content,
                 },
             ],
         )

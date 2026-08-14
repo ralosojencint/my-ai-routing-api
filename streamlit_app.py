@@ -608,7 +608,19 @@ for message in st.session_state.messages:
         if message.get("images"):
             for image in message["images"]:
                 st.image(image, width=220)
+
         st.markdown(message["content"])
+
+        if message.get("sources"):
+            with st.expander("Sources"):
+                for source in message["sources"]:
+                    title = source.get("title", "Source")
+                    url = source.get("url", "")
+
+                    st.markdown(f"**{title}**")
+
+                    if url:
+                        st.markdown(url)
 
 if st.session_state.activity:
     with st.expander("NEXUS activity", expanded=False):

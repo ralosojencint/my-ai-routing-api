@@ -160,14 +160,39 @@ async def groq_text(prompt, images=None):
             
             client.chat.completions.create,
             model="llama-3.3-70b-versatile",
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "You are NEXUS, an intelligent AI assistant. "
-                        "Answer clearly, accurately, and directly."
-                    ),
-                },
+            messages = [
+    {
+        "role": "system",
+        "content": (
+            "You are NEXUS, an intelligent AI assistant. "
+            "Answer clearly, accurately, and directly."
+        ),
+    }
+]
+
+user_content = [
+    {
+        "type": "text",
+        "text": prompt,
+    }
+]
+
+for _, image in images or []:
+    buffer = io.BytesIO()
+    image.save(buffer, format="JPEG")
+    encoded = base64.b64encode(buffer.getvalue()).decode("utf-8")
+
+    user_content.append({
+        "type": "image_url",
+        "image_url": {
+            "url": f"data:image/jpeg;base64,{encoded}"
+        }
+    })
+
+messages.append({
+    "role": "user",
+    "content": user_content,
+})
                 {
                     "role": "user",
                     "content": prompt,

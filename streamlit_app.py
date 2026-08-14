@@ -1,4 +1,4 @@
-import os, re, json, sqlite3, asyncio, time, io
+import os, re, json, sqlite3, asyncio, time, io, base64
 from pathlib import Path
 from collections import Counter
 

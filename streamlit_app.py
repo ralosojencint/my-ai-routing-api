@@ -355,8 +355,7 @@ async def gemini_text(prompt, images=None):
                     await asyncio.sleep(wait_time)
                     continue
 
-                if images:
-    return await groq_text(prompt, images=images)
+                                return await groq_text(prompt, images=images)
 
                 return await groq_text(prompt, images=images)
 

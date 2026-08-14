@@ -435,7 +435,7 @@ RECENT PERSISTENT MEMORY:
         elif isinstance(result, str):
             draft = result
 
-        if research_result["answer"] or research_result["sources"]:
+            if research_result["answer"] or research_result["sources"]:
         st.session_state.activity.append("Research synthesis")
 
         source_context = "\n\n".join(

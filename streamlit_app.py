@@ -435,18 +435,40 @@ RECENT PERSISTENT MEMORY:
         elif isinstance(result, str):
             draft = result
 
-    if research_result["answer"]:
+        if research_result["answer"] or research_result["sources"]:
         st.session_state.activity.append("Research synthesis")
+
+        source_context = "\n\n".join(
+            f"""
+SOURCE {i}:
+Title: {source.get('title', 'Untitled')}
+URL: {source.get('url', '')}
+Content: {source.get('content', '')}
+"""
+            for i, source in enumerate(research_result["sources"], 1)
+        )
+
         draft = await gemini_text(
             f"""
-Synthesize a final answer to the user's request using the research below.
-Do not invent citations or facts.
+You are NEXUS performing research synthesis.
 
-USER:
+Answer the user's request using ONLY the research evidence provided below.
+Prioritize recent and relevant information.
+Do not invent facts, sources, URLs, citations, or publication details.
+
+IMPORTANT:
+- Give a useful, specific answer.
+- Do NOT invent a source if the research does not contain one.
+- Do NOT call a generic "Research Database" a source.
+
+USER REQUEST:
 {query}
 
-RESEARCH:
-{research_result['answer']}
+TAVILY RESEARCH SUMMARY:
+{research_result.get('answer', '')}
+
+TAVILY SOURCES:
+{source_context or "(no individual sources returned)"}
 
 INITIAL ANSWER:
 {draft}

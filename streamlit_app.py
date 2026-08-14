@@ -303,9 +303,9 @@ async def gemini_text(prompt, images=None):
 
     contents = [prompt]
 
-            contents = [prompt]
     for _, image in images or []:
         contents.append(image)
+
     max_retries = 2
 
     for attempt in range(max_retries + 1):

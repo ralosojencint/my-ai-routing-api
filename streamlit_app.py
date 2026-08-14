@@ -356,11 +356,7 @@ async def gemini_text(prompt, images=None):
                     continue
 
                 if images:
-                    return (
-                        "⚠️ Gemini is currently rate-limited, "
-                        "so the attached image could not be analyzed. "
-                        "Please try again in a moment."
-                    )
+    return await groq_text(prompt, images=images)
 
                 return await groq_text(prompt, images=images)
 

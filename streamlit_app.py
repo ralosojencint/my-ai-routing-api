@@ -188,7 +188,8 @@ async def groq_text(prompt, images=None):
                     "role": "system",
                     "content": (
                         "You are NEXUS, an intelligent AI assistant. "
-                        "Answer clearly, accurately, and directly."
+                        "Answer clearly, accurately, and directly. "
+                        "Do not reveal internal reasoning or thinking."
                     ),
                 },
                 {
@@ -201,12 +202,12 @@ async def groq_text(prompt, images=None):
         if not response.choices:
             return "⚠️ Groq returned no choices."
 
-                answer = response.choices[0].message.content
+        answer = response.choices[0].message.content
 
         if not answer:
             return "⚠️ Groq returned an empty response."
 
-        # Hide model reasoning / thinking blocks from the user.
+        # Remove visible reasoning blocks.
         answer = re.sub(
             r"<think>.*?</think>",
             "",

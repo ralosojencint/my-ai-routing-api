@@ -364,7 +364,7 @@ async def gemini_text(prompt, images=None):
                         "Please try again in a moment."
                     )
 
-                return await groq_text(prompt)
+                return await groq_text(prompt, images=images)
 
             if (
                 "503" in error_text

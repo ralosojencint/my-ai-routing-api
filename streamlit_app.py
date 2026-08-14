@@ -439,11 +439,11 @@ RECENT PERSISTENT MEMORY:
         st.session_state.activity.append("Research synthesis")
 
         source_context = "\n\n".join(
-            f"Title: {source.get('title', 'Untitled')}\n"
-            f"URL: {source.get('url', '')}\n"
-            f"Content: {source.get('content', '')}"
-            for source in research_result["sources"]
-        )
+    f"Title: {source.get('title', 'Untitled')}\n"
+    f"URL: {source.get('url', '')}\n"
+    f"Content: {source.get('content', '')[:2500]}"
+    for source in research_result["sources"][:6]
+)
 
         draft = await gemini_text(
             f"""

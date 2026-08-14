@@ -449,10 +449,18 @@ RECENT PERSISTENT MEMORY:
             f"""
 You are NEXUS performing research synthesis.
 
-Answer the user's request using the research evidence below.
-Prioritize recent and relevant information.
-Do not invent facts, sources, URLs, citations, or publication details.
+Answer the user's request using the Tavily research evidence below.
 
+IMPORTANT RULES FOR CURRENT / LATEST / RECENT QUESTIONS:
+- Prioritize the newest information in the provided sources.
+- Pay close attention to publication dates and event dates.
+- Do not present old information as current.
+- If a source is from an older year, clearly identify it as historical/background information.
+- Prefer recent primary sources and reputable news sources when available.
+- Do not use your own prior knowledge to override the provided research.
+- Do not invent facts, dates, sources, URLs, citations, or publication details.
+- If the provided research does not contain enough recent information, say so instead of guessing.
+- Answer the user's actual question directly before giving background context.
 USER REQUEST:
 {query}
 

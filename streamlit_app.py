@@ -304,20 +304,7 @@ async def gemini_text(prompt, images=None):
     contents = [prompt]
 
     for _, image in images or []:
-        try:
-            image_bytes = io.BytesIO()
-            image.save(image_bytes, format="JPEG")
-
-            contents.append(
-                {
-                    "inline_data": {
-                        "mime_type": "image/jpeg",
-                        "data": image_bytes.getvalue(),
-                    }
-                }
-            )
-        except Exception as exc:
-            return f"⚠️ Could not prepare image: {exc}"
+    contents.append(image)
 
     max_retries = 2
 

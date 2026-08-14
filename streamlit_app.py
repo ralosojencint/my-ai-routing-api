@@ -201,7 +201,18 @@ async def groq_text(prompt, images=None):
         if not response.choices:
             return "⚠️ Groq returned no choices."
 
-        answer = response.choices[0].message.content
+                answer = response.choices[0].message.content
+
+        if not answer:
+            return "⚠️ Groq returned an empty response."
+
+        # Hide model reasoning / thinking blocks from the user.
+        answer = re.sub(
+            r"<think>.*?</think>",
+            "",
+            answer,
+            flags=re.DOTALL | re.IGNORECASE
+        ).strip()
 
         if not answer:
             return "⚠️ Groq returned an empty response."

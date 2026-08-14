@@ -144,7 +144,7 @@ def groq_client():
 
 
 
-async def groq_text(prompt):
+async def groq_text(prompt, images=None):
     if not GROQ_API_KEY:
         return "⚠️ GROQ_API_KEY is missing from Streamlit Secrets."
 

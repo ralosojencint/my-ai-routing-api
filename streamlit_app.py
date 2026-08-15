@@ -549,12 +549,7 @@ Do not stop mid-sentence or mid-bullet.
         )
 
         # Remove any visible model reasoning from the final answer.
-    draft = re.sub(
-        r"<think>.*?</think>",
-        "",
-        draft or "",
-        flags=re.DOTALL | re.IGNORECASE
-    ).strip()
+draft = clean_ai_response(draft)
 
     st.session_state.activity.extend([
         "Result checked",

@@ -779,9 +779,14 @@ RECENT MEMORY:
             + source_context
         )
 
-        synthesized = await gemini_text(
+                synthesized = await gemini_text(
             synthesis_prompt
         )
+
+        if not synthesized or synthesized.startswith("⚠️"):
+            synthesized = await groq_text(
+                synthesis_prompt
+            )
 
         synthesized = clean_ai_response(
             synthesized

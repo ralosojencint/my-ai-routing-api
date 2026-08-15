@@ -449,23 +449,29 @@ async def research(query):
         current_date = time.strftime("%B %d, %Y")
 
         research_query = f"""
+Find exactly 5 REAL, specific artificial-intelligence news developments
+from today or the most recent available AI news.
+
+Current date: {current_date}
+
+User request:
 {query}
 
-Focus ONLY on real AI news and developments published around
-{current_date}.
-
-Prioritize:
-- announcements
-- product/model launches
-- company developments
-- funding/acquisitions
-- major research releases
-- regulation/policy
-- important AI industry events
-
-Do NOT give general AI trends or background information.
-Do NOT use old articles unless they directly report a new development.
-Return evidence for multiple distinct developments.
+STRICT REQUIREMENTS:
+- Search specifically for AI news, not general technology or business news.
+- Prefer developments actually reported on {current_date}.
+- If there are not enough developments from today, use the most recent
+  credible AI news from the previous 1-3 days.
+- Each development must be a specific event, announcement, launch,
+  funding deal, research release, regulation decision, acquisition,
+  partnership, or major company action.
+- Do NOT return generic AI trends.
+- Do NOT return predictions or broad industry analysis.
+- Do NOT invent developments.
+- Do NOT use horoscope, stock-market, insurance, finance, or unrelated
+  business articles unless the article itself reports a specific AI event.
+- Prefer primary sources and reputable technology/news publications.
+- Find multiple DISTINCT developments.
 """
 
         result = await asyncio.to_thread(

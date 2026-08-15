@@ -779,7 +779,7 @@ RECENT MEMORY:
             + source_context
         )
 
-                        synthesized = await gemini_text(
+        synthesized = await gemini_text(
             synthesis_prompt
         )
 

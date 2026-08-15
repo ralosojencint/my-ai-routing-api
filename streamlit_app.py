@@ -551,8 +551,8 @@ Do not stop mid-sentence or mid-bullet.
 """
         )
 
-        # Remove any visible model reasoning from the final answer.
-draft = clean_ai_response(draft)
+            # Remove any visible model reasoning from the final answer.
+    draft = clean_ai_response(draft)
 
     st.session_state.activity.extend([
         "Result checked",

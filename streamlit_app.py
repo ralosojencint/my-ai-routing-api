@@ -496,6 +496,11 @@ async def research(query):
 
         # Reject obviously unrelated material.
         irrelevant_terms = [
+            "murder",
+            "arrest",
+            "crime",
+            "fbi",
+            "criminal",
             "horoscope",
             "stock market",
             "weather",
@@ -774,13 +779,28 @@ RECENT MEMORY:
             + source_context
         )
 
-        synthesized = await gemini_text(
+                synthesized = await gemini_text(
             synthesis_prompt
         )
 
         synthesized = clean_ai_response(
             synthesized
         )
+
+        # If Gemini synthesis fails, use Groq to format
+        # the already-retrieved live research instead of
+        # dumping raw article text to the user.
+        if (
+            not synthesized
+            or synthesized.startswith("⚠️")
+        ):
+            synthesized = await groq_text(
+                synthesis_prompt
+            )
+
+            synthesized = clean_ai_response(
+                synthesized
+            )
 
         if synthesized and not synthesized.startswith("⚠️"):
             draft = synthesized

@@ -449,14 +449,14 @@ async def research(query):
 
         current_date = date.today().isoformat()
 
-        # Search specifically for CURRENT AI NEWS.
-        # Multiple focused searches give Tavily a better chance
-        # of finding five real and distinct developments.
+        # -------------------- Focused AI news searches --------------------
+
         search_queries = [
-            f"artificial intelligence AI news {current_date}",
-            f"AI model launch company announcement {current_date}",
-            f"AI research technology news {current_date}",
-            f"AI funding partnership regulation news {current_date}",
+            f"AI artificial intelligence latest news {current_date}",
+            f"AI model launch announcement {current_date}",
+            f"AI research breakthrough technology {current_date}",
+            f"AI company partnership product launch {current_date}",
+            f"AI regulation safety policy {current_date}",
         ]
 
         all_sources = []
@@ -479,7 +479,8 @@ async def research(query):
             except Exception:
                 continue
 
-        # Remove duplicate URLs.
+        # -------------------- Remove duplicate URLs --------------------
+
         unique_sources = []
         seen_urls = set()
 
@@ -488,21 +489,21 @@ async def research(query):
                 source.get("url", "")
             ).strip()
 
-            if not url or url in seen_urls:
+            if not url:
                 continue
 
-            seen_urls.add(url)
+            normalized_url = url.rstrip("/").lower()
+
+            if normalized_url in seen_urls:
+                continue
+
+            seen_urls.add(normalized_url)
             unique_sources.append(source)
 
-        # Reject obviously unrelated material.
+        # -------------------- Filter obvious non-AI stories --------------------
+
         irrelevant_terms = [
-            "murder",
-            "arrest",
-            "crime",
-            "fbi",
-            "criminal",
             "horoscope",
-            "stock market",
             "weather",
             "sports",
             "flight",
@@ -512,13 +513,25 @@ async def research(query):
             "celebrity",
             "recipe",
             "travel",
+            "cosmetics",
+            "veterinary",
+            "petvivo",
+            "quarterly earnings",
+            "fiscal results",
+            "stock market",
+            "share price",
+            "investor",
+            "murder",
+            "arrest",
+            "crime",
+            "criminal",
+            "police",
+            "fbi",
         ]
 
-        # Require actual AI-related language.
         ai_terms = [
             "artificial intelligence",
             "artificial-intelligence",
-            " ai ",
             "machine learning",
             "generative ai",
             "ai model",
@@ -539,13 +552,20 @@ async def research(query):
             "microsoft",
             "nvidia",
             "mistral",
-            "open source ai",
+            "z.ai",
+            "glm",
             "robotics",
+            "large language model",
+            "llm",
+            "foundation model",
+            "open-weight",
+            "open source model",
         ]
 
         filtered_sources = []
 
         for source in unique_sources:
+
             title = str(
                 source.get("title", "")
             ).strip()
@@ -568,26 +588,86 @@ async def research(query):
                 + " "
             )
 
+            # Reject obvious non-AI stories.
             if any(
                 term in combined
                 for term in irrelevant_terms
             ):
                 continue
 
+            # Require actual AI relevance.
             if not any(
                 term in combined
                 for term in ai_terms
             ):
                 continue
 
+            # Reject extremely short search results.
+            if len(title) < 10:
+                continue
+
+            if len(content) < 80:
+                continue
+
             filtered_sources.append(source)
 
-        # Keep the strongest current-news evidence.
-        filtered_sources = filtered_sources[:10]
+        # -------------------- Deduplicate similar stories --------------------
+
+        # Simple title-token similarity check.
+        # This prevents multiple articles about the same event
+        # from occupying the research set.
+        final_sources = []
+        seen_title_tokens = []
+
+        for source in filtered_sources:
+
+            title = str(
+                source.get("title", "")
+            ).strip()
+
+            title_tokens = set(
+                re.findall(
+                    r"[a-zA-Z0-9]+",
+                    title.lower()
+                )
+            )
+
+            is_duplicate = False
+
+            for previous_tokens in seen_title_tokens:
+
+                if not title_tokens:
+                    continue
+
+                overlap = len(
+                    title_tokens & previous_tokens
+                )
+
+                similarity = (
+                    overlap / max(
+                        len(title_tokens),
+                        len(previous_tokens),
+                        1
+                    )
+                )
+
+                if similarity >= 0.60:
+                    is_duplicate = True
+                    break
+
+            if is_duplicate:
+                continue
+
+            final_sources.append(source)
+            seen_title_tokens.append(title_tokens)
+
+        # Keep enough evidence for the synthesis model,
+        # but don't flood it with unrelated search results.
+        final_sources = final_sources[:12]
 
         return {
             "answer": "",
-            "sources": filtered_sources,
+            "sources": final_sources,
             "error": "",
         }
 
@@ -598,6 +678,7 @@ async def research(query):
             "error": f"{type(exc).__name__}: {exc}",
         }
     
+                    
 def should_research(query):
     q = query.lower()
 

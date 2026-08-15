@@ -452,12 +452,15 @@ async def research(query):
         # -------------------- Focused AI news searches --------------------
 
         search_queries = [
-            f"AI artificial intelligence latest news {current_date}",
-            f"AI model launch announcement {current_date}",
-            f"AI research breakthrough technology {current_date}",
-            f"AI company partnership product launch {current_date}",
-            f"AI regulation safety policy {current_date}",
-        ]
+    f"artificial intelligence AI news today {current_date}",
+    f"new AI model released announced today {current_date}",
+    f"OpenAI Anthropic Google Meta Microsoft AI news {current_date}",
+    f"Nvidia AI chips infrastructure data centers news {current_date}",
+    f"AI startup funding partnership deployment announcement {current_date}",
+    f"AI research breakthrough paper today {current_date}",
+    f"AI regulation government policy announcement {current_date}",
+    f"robotics autonomous AI agent announcement {current_date}",
+]
 
         all_sources = []
 

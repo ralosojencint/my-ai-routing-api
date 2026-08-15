@@ -533,6 +533,9 @@ IMPORTANT RULES FOR CURRENT / LATEST / RECENT QUESTIONS:
 - Finish every bullet completely.
 - Do not start a new section if you cannot finish it.
 - Never end the response with an incomplete bullet or sentence.
+- Never output <think>, </think>, <thinking>, or internal reasoning.
+- Never describe your hidden reasoning or analysis process.
+- Return only the final answer intended for the user.
 USER REQUEST:
 {query}
 

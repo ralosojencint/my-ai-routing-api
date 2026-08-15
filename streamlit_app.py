@@ -875,8 +875,6 @@ UPLOADED DATASETS:
 {dataset_context or "(none)"}
 
 RECENT MEMORY:
-
-RECENT MEMORY:
 {memory_context or "(none)"}
 """
 

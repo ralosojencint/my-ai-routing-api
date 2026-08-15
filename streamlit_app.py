@@ -517,8 +517,9 @@ TAVILY RESEARCH SUMMARY:
 TAVILY SOURCES:
 {source_context or "(no individual sources returned)"}
 
-INITIAL ANSWER:
-{draft}
+Use the research evidence above to produce a complete answer.
+Keep the answer concise enough to finish fully.
+Do not stop mid-sentence or mid-bullet.
 """
         )
 

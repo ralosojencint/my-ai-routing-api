@@ -461,9 +461,31 @@ async def answer_user(query, images=None):
     )
 
     memories = load_memories()
-    memory_context = "\n\n".join(
-        f"User: {u}\nNEXUS: {a}" for u, a in memories
+
+# Only use memory when it is actually relevant to the current question.
+relevant_memories = []
+
+query_terms = set(
+    re.findall(r"[a-zA-Z0-9_]+", query.lower())
+)
+
+for user_text, assistant_text in memories:
+    memory_terms = set(
+        re.findall(
+            r"[a-zA-Z0-9_]+",
+            f"{user_text} {assistant_text}".lower()
+        )
     )
+
+    if query_terms & memory_terms:
+        relevant_memories.append(
+            (user_text, assistant_text)
+        )
+
+memory_context = "\n\n".join(
+    f"User: {u}\nNEXUS: {a}"
+    for u, a in relevant_memories[-6:]
+)
 
     base_prompt = f"""
 You are NEXUS, an agentic research and reasoning workspace.

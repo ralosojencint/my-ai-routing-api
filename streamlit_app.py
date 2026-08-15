@@ -480,15 +480,12 @@ async def research(query):
 
         for search_query in search_queries:
             result = await asyncio.to_thread(
-                client.search,
-                query=search_query,
-                search_depth="advanced",
-                topic="news",
-                time_range="day",
-                max_results=6,
-                include_answer=False,
-                include_domains=trusted_domains,
-            )
+    client.search,
+    query=search_query,
+    search_depth="advanced",
+    max_results=6,
+    include_answer=False,
+)
 
             all_results.extend(
                 result.get("results", [])

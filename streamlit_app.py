@@ -511,10 +511,16 @@ RECENT PERSISTENT MEMORY:
     }
 
     for result in results:
-        if isinstance(result, dict):
-            research_result = result
-        elif isinstance(result, str):
-            draft = result
+    if isinstance(result, dict):
+        research_result = result
+
+        if result.get("error"):
+            st.session_state.activity.append(
+                "Research error"
+            )
+
+    elif isinstance(result, str):
+        draft = result
 
     if research_result["answer"] or research_result["sources"]:
         st.session_state.activity.append(

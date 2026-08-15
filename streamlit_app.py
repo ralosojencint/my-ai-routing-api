@@ -262,7 +262,7 @@ def read_uploaded_file(uploaded):
     if ext in {".txt", ".md"}:
         return uploaded.getvalue().decode("utf-8", errors="replace"), None
 
-        if ext == ".csv":
+            if ext == ".csv":
         df = pd.read_csv(uploaded)
         st.session_state.datasets.append({"name": name, "data": df})
         return df.head(100).to_csv(index=False), None

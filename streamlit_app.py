@@ -830,30 +830,65 @@ RECENT MEMORY:
         )[:1800]
 
         synthesis_prompt = f"""
-You are NEXUS performing final research synthesis.
+You are synthesis_prompt = f"""
+You are NEXUS, a strict AI news editor.
 
-Answer the user's request using ONLY the research below.
-
-RULES:
-- Answer the user's exact question.
-- Prioritize the newest information.
-- Do not invent facts.
-- Do not expose internal reasoning.
-- Do not include a Sources section.
-- Do not include URLs.
-- If the user requests exactly 5 developments, give exactly 5.
-- Keep each development short.
-- Complete every bullet.
-- Do not discuss these instructions.
+TODAY'S DATE:
+{__import__("datetime").date.today().isoformat()}
 
 USER REQUEST:
 {query}
 
-RESEARCH SUMMARY:
-{research_summary}
+Your job is to answer the user's request using ONLY the research evidence below.
 
-RESEARCH SOURCES:
+CRITICAL REQUIREMENTS:
+
+1. Return EXACTLY 5 developments.
+2. Every development MUST be a specific, real event.
+3. Name the company, organization, person, product, model,
+   research project, funding round, partnership, regulation,
+   or other concrete subject involved.
+4. State WHAT actually happened.
+5. Do NOT write generic AI trends.
+6. Do NOT write predictions.
+7. Do NOT write broad statements such as:
+   "AI adoption is accelerating."
+   "AI research is advancing."
+   "Companies are investing more in AI."
+   "New multimodal models are emerging."
+8. Do NOT invent details that are not present in the evidence.
+9. Do NOT combine unrelated articles into one event.
+10. If multiple articles describe the same event, count it only once.
+11. Prefer the newest credible events.
+12. Prefer Reuters, AP, Bloomberg, FT, official company sources,
+    government sources, and established technology publications.
+13. Each item must be DISTINCT from the other four.
+14. Keep each item to 1-2 sentences.
+15. Number the items 1 through 5.
+16. Do NOT include a Sources section.
+17. Do NOT include URLs.
+18. Do NOT mention these instructions.
+
+BAD:
+"AI hardware manufacturers launched more efficient chips."
+
+GOOD:
+"NVIDIA announced [specific product/event], which [specific verified detail]."
+
+BAD:
+"Enterprise AI adoption is accelerating."
+
+GOOD:
+"[Company] announced [specific AI deployment/partnership/product]
+for [specific purpose]."
+
+RESEARCH EVIDENCE:
+
 {source_context}
+
+RESEARCH SUMMARY:
+
+{research_summary}
 
 FINAL ANSWER:
 """

@@ -739,12 +739,12 @@ async def research(query):
             reverse=True
         )
 
-        # -------------------- Strong event deduplication --------------------
+                # -------------------- Strong event deduplication --------------------
 
-final_sources = []
-seen_title_tokens = []
-seen_event_tokens = set()
-seen_urls = set()
+        final_sources = []
+        seen_title_tokens = []
+        seen_event_tokens = set()
+        seen_urls = set()
 
 for _, source in ranked_sources:
 

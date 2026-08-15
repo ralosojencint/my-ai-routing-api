@@ -375,8 +375,10 @@ def clean_ai_response(text):
         flags=re.DOTALL | re.IGNORECASE
     )
 
-    return text.strip()
- async def gemini_text(prompt, images=None):
+        return text.strip()
+
+
+async def gemini_text(prompt, images=None):
     client = gemini_client()
 
     if client is None:

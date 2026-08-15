@@ -612,7 +612,10 @@ Answer ONLY the USER REQUEST above. Do not answer a different question or repeat
 
         draft = await gemini_text(synthesis_prompt)
 
-    draft = clean_ai_response(draft)
+draft = clean_ai_response(draft)
+
+if draft.startswith("⚠️"):
+    draft = ""
 
     if not draft or len(draft.strip()) < 80:
         draft = research_result.get("answer", "").strip()

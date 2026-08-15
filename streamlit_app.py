@@ -341,7 +341,7 @@ def clean_ai_response(text):
     if not text:
         return ""
 
-    # Remove normal completed thinking blocks
+    # Remove completed thinking blocks
     text = re.sub(
         r"<think>.*?</think>",
         "",
@@ -356,8 +356,7 @@ def clean_ai_response(text):
         flags=re.DOTALL | re.IGNORECASE
     )
 
-    # If the model starts a thinking block but never closes it,
-    # discard everything from <think> onward.
+    # Remove unfinished thinking blocks
     text = re.sub(
         r"<think>.*$",
         "",
@@ -372,8 +371,7 @@ def clean_ai_response(text):
         flags=re.DOTALL | re.IGNORECASE
     )
 
-    # Remove accidental "Sources" sections because NEXUS
-    # displays Tavily sources separately.
+    # Remove accidental Sources sections
     text = re.sub(
         r"\n\s*(Sources|Source List)\s*:?\s*$.*",
         "",
@@ -381,7 +379,7 @@ def clean_ai_response(text):
         flags=re.DOTALL | re.IGNORECASE
     )
 
-        return text.strip()
+    return text.strip()
 
 
 async def gemini_text(prompt, images=None):

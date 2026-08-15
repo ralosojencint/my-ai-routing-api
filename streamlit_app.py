@@ -375,7 +375,7 @@ async def gemini_text(prompt, images=None):
             )
 
             answer = clean_ai_response(response.text or "I received no text response.")
-return answer
+            return answer
         except Exception as exc:
             error_text = str(exc).lower()
 

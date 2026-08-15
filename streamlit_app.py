@@ -335,6 +335,7 @@ def clean_ai_response(text):
     if not text:
         return ""
 
+    # Remove normal completed thinking blocks
     text = re.sub(
         r"<think>.*?</think>",
         "",
@@ -344,6 +345,31 @@ def clean_ai_response(text):
 
     text = re.sub(
         r"<thinking>.*?</thinking>",
+        "",
+        text,
+        flags=re.DOTALL | re.IGNORECASE
+    )
+
+    # If the model starts a thinking block but never closes it,
+    # discard everything from <think> onward.
+    text = re.sub(
+        r"<think>.*$",
+        "",
+        text,
+        flags=re.DOTALL | re.IGNORECASE
+    )
+
+    text = re.sub(
+        r"<thinking>.*$",
+        "",
+        text,
+        flags=re.DOTALL | re.IGNORECASE
+    )
+
+    # Remove accidental "Sources" sections because NEXUS
+    # displays Tavily sources separately.
+    text = re.sub(
+        r"\n\s*(Sources|Source List)\s*:?\s*$.*",
         "",
         text,
         flags=re.DOTALL | re.IGNORECASE

@@ -453,26 +453,42 @@ async def research(query):
 Find exactly 5 REAL, specific artificial-intelligence news developments
 from today or the most recent available AI news.
 
-Current date: {current_date}
+current_date = date.today().isoformat()
 
-User request:
+research_query = f"""
+Find exactly 5 REAL and DISTINCT artificial-intelligence news
+developments for the user's request.
+
+TODAY'S DATE: {current_date}
+
+USER REQUEST:
 {query}
 
-STRICT REQUIREMENTS:
-- Search specifically for AI news.
-- Prefer developments actually reported today.
-- If there are not enough developments today, use the most recent
-  credible AI news from the previous 1-3 days.
-- Each development must be a specific event, announcement, launch,
-  funding deal, research release, regulation decision, acquisition,
-  partnership, or major company action.
+DATE PRIORITY:
+1. First prioritize developments published TODAY ({current_date}).
+2. If fewer than 5 credible developments are available today,
+   use developments published YESTERDAY.
+3. Only use older articles when absolutely necessary.
+4. Never present an older event as if it happened today.
+5. Prefer articles with a clearly identifiable publication date.
+
+QUALITY REQUIREMENTS:
+- Every development must be a specific, verifiable AI event.
+- Prefer product/model launches, company announcements,
+  funding, acquisitions, research releases, major partnerships,
+  and AI regulation/policy decisions.
+- Prefer Reuters, AP, Bloomberg, Financial Times, official company
+  announcements, government sources, research organizations,
+  and established technology publications.
 - Do NOT return generic AI trends.
 - Do NOT return predictions.
-- Do NOT invent developments.
-- Ignore horoscope, sports, weather, stock-market, insurance,
-  admissions, travel, and unrelated business articles.
-- Prefer primary sources and reputable news publications.
-- Find multiple DISTINCT developments.
+- Do NOT invent facts.
+- Do NOT use horoscope, sports, weather, stock-market,
+  admissions, travel, or unrelated business articles.
+- Each of the 5 developments must be DISTINCT.
+
+Return research evidence that allows NEXUS to produce exactly
+5 short developments.
 """
 
         result = await asyncio.to_thread(

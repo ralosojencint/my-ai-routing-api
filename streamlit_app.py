@@ -734,7 +734,7 @@ RECENT MEMORY:
                 "URL: " + url
             )
 
-        source_context = "\n\n".join(
+                source_context = "\n\n".join(
             source_context_parts
         )
 
@@ -747,9 +747,6 @@ RECENT MEMORY:
             "Do NOT use your pretrained knowledge to replace "
             "the articles.\n"
             "Do NOT say you lack internet access.\n"
-            "Do NOT discuss old AI developments unless they are "
-            "actually reported by the retrieved articles.\n"
-            "Do NOT create generic AI trends.\n"
             "Do NOT invent facts.\n\n"
             "USER REQUEST:\n"
             + query
@@ -757,14 +754,6 @@ RECENT MEMORY:
             "TASK:\n"
             "Extract exactly 5 DISTINCT concrete AI news events "
             "from the retrieved articles.\n\n"
-            "Each item MUST:\n"
-            "- identify the company, organization, person, "
-            "product, model, research project, or regulator involved\n"
-            "- describe the specific event that happened\n"
-            "- be based directly on the retrieved evidence\n"
-            "- be different from the other four items\n\n"
-            "If several articles describe the same event, "
-            "count that event only once.\n\n"
             "OUTPUT FORMAT:\n"
             "1. [Specific event]\n"
             "2. [Specific event]\n"
@@ -779,14 +768,9 @@ RECENT MEMORY:
             + source_context
         )
 
-                        synthesized = await gemini_text(
+        synthesized = await gemini_text(
             synthesis_prompt
         )
-
-        if not synthesized or synthesized.startswith("⚠️"):
-            synthesized = await groq_text(
-                synthesis_prompt
-            )
 
         synthesized = clean_ai_response(
             synthesized

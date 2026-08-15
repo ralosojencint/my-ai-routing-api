@@ -495,8 +495,8 @@ RECENT PERSISTENT MEMORY:
     ]
 
     if should_research(query):
-        jobs.append(research(query))
-        st.session_state.activity.append("Deep research")
+    jobs.append(research(query))
+    st.session_state.activity.append("Deep research")
 
     results = await asyncio.gather(
         *jobs,

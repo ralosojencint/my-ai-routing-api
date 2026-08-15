@@ -837,15 +837,31 @@ STRICT RULES:
 
 Each item should be concise but informative.
 
-Prefer developments such as:
-- new AI models
+Prefer major, substantive developments such as:
+- new AI models or major model updates
 - AI product launches
 - major AI company announcements
-- AI partnerships
-- AI research developments
-- AI infrastructure developments
+- significant AI partnerships or deployments
+- important AI research developments
+- major AI infrastructure or chip developments
 - AI regulation or government announcements
-- major AI funding or deployment announcements
+- major AI funding or acquisitions
+- significant robotics or AI-agent developments
+
+Avoid using these as a development unless there is a
+major announcement attached to them:
+- ordinary conferences
+- scheduled conferences
+- webinars
+- training events
+- upcoming events
+- conference announcements
+- general educational events
+- opinion articles
+- promotional announcements
+
+If a stronger AI development is available in the live articles,
+choose it instead of an event or conference announcement.
 
 If several articles describe the same development, combine them into ONE item.
 

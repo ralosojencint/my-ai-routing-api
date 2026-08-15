@@ -611,49 +611,16 @@ async def research(query):
 
             filtered_sources.append(source)
 
-        # -------------------- Deduplicate similar stories --------------------
+                # -------------------- Deduplicate similar stories --------------------
 
         final_sources = []
         seen_title_tokens = []
-        seen_event_terms = set()
-
-        event_terms = [
-            "openai",
-            "anthropic",
-            "google",
-            "deepmind",
-            "gemini",
-            "microsoft",
-            "meta",
-            "nvidia",
-            "apple",
-            "z.ai",
-            "z ai",
-            "glm",
-            "mistral",
-            "xai",
-            "grok",
-            "llama",
-            "qwen",
-            "deepseek",
-            "amazon",
-            "alibaba",
-            "tencent",
-        ]
 
         for source in filtered_sources:
 
             title = str(
                 source.get("title", "")
             ).strip()
-
-            content = str(
-                source.get("content", "")
-            ).strip()
-
-            combined_text = (
-                title + " " + content
-            ).lower()
 
             title_tokens = set(
                 re.findall(
@@ -662,16 +629,7 @@ async def research(query):
                 )
             )
 
-            # Identify the main company/model/event entity.
-            current_event_terms = {
-                term
-                for term in event_terms
-                if term in combined_text
-            }
-
             is_duplicate = False
-
-            # ---- Title similarity check ----
 
             for previous_tokens in seen_title_tokens:
 
@@ -690,68 +648,16 @@ async def research(query):
                     )
                 )
 
-                if similarity >= 0.45:
+                if similarity >= 0.60:
                     is_duplicate = True
                     break
-
-            # ---- Same company/model + overlapping event ----
-
-            if not is_duplicate and current_event_terms:
-
-                for previous_event_terms, previous_content in seen_event_terms:
-
-                    shared_entities = (
-                        current_event_terms
-                        & previous_event_terms
-                    )
-
-                    if not shared_entities:
-                        continue
-
-                    current_words = set(
-                        re.findall(
-                            r"[a-zA-Z0-9]+",
-                            combined_text
-                        )
-                    )
-
-                    previous_words = set(
-                        re.findall(
-                            r"[a-zA-Z0-9]+",
-                            previous_content
-                        )
-                    )
-
-                    shared_words = (
-                        current_words
-                        & previous_words
-                    )
-
-                    # If the same AI company/model is involved
-                    # and a substantial number of words overlap,
-                    # treat it as the same event.
-                    if len(shared_words) >= 5:
-                        is_duplicate = True
-                        break
 
             if is_duplicate:
                 continue
 
             final_sources.append(source)
+            seen_title_tokens.append(title_tokens)
 
-            seen_title_tokens.append(
-                title_tokens
-            )
-
-            seen_event_terms.add(
-                (
-                    current_event_terms,
-                    combined_text
-                )
-            )
-
-        # Keep enough evidence for the synthesis model,
-        # but don't flood it with unrelated search results.
         final_sources = final_sources[:12]
 
         return {

@@ -567,7 +567,7 @@ RECENT PERSISTENT MEMORY:
         source_context = "\n\n".join(
             f"Title: {source.get('title', 'Untitled')}\n"
             f"URL: {source.get('url', '')}\n"
-            f"Content: {source.get('content', '')[:2500]}"
+            f"Content: {source.get('content', '')[:1200]}"
             for source in research_result["sources"][:6]
         )
 

@@ -610,36 +610,22 @@ TAVILY SOURCES:
 Answer ONLY the USER REQUEST above. Do not answer a different question or repeat information from previous conversations.
 """
 
-        draft = await gemini_text(synthesis_prompt)
+                draft = await gemini_text(synthesis_prompt)
+        draft = clean_ai_response(draft)
 
-draft = clean_ai_response(draft)
+        if draft.startswith("⚠️"):
+            draft = ""
 
-if draft.startswith("⚠️"):
-    draft = ""
+    draft = clean_ai_response(draft)
 
     if not draft or len(draft.strip()) < 80:
         draft = research_result.get("answer", "").strip()
 
-            if not draft:
+    if not draft:
         draft = (
             "⚠️ NEXUS found recent research, but the final synthesis "
             "could not be completed. Please try again."
         )
-
-    st.session_state.activity.extend([
-        "Result checked",
-        "Memory updated"
-    ])
-
-    save_memory(query, draft)
-
-    st.session_state.request_count += 1
-
-    return {
-        "answer": draft,
-        "sources": research_result.get("sources", []),
-        "latency": time.perf_counter() - started,
-    }
 
     st.session_state.activity.extend([
         "Result checked",

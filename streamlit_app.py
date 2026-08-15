@@ -734,7 +734,7 @@ RECENT MEMORY:
                 "URL: " + url
             )
 
-                source_context = "\n\n".join(
+                        source_context = "\n\n".join(
             source_context_parts
         )
 

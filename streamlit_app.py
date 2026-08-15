@@ -157,6 +157,8 @@ async def groq_text(prompt, images=None):
         if client is None:
             return "⚠️ Groq client could not be initialized."
 
+                prompt = prompt[:12000]
+
         user_content = [
             {
                 "type": "text",

@@ -656,20 +656,30 @@ RECENT MEMORY:
 {memory_context or "(none)"}
 """
 
-    jobs = [
-        gemini_text(base_prompt, images=images)
-    ]
-
-    # -------------------- Research --------------------
+        # -------------------- Request routing --------------------
 
     if should_research(query):
-        jobs.append(research(query))
+
+        # News/research requests must use LIVE research first.
+        # Do not generate a normal Gemini answer that could
+        # override the retrieved evidence.
         st.session_state.activity.append("Deep research")
 
-    results = await asyncio.gather(
-        *jobs,
-        return_exceptions=True
-    )
+        research_task = await research(query)
+
+        results = [
+            research_task
+        ]
+
+    else:
+
+        # Normal questions use Gemini directly.
+        results = [
+            await gemini_text(
+                base_prompt,
+                images=images
+            )
+        ]
 
     draft = ""
     research_result = {

@@ -722,7 +722,7 @@ async def answer_user(query, images=None):
         for u, a in memories[-8:]
     )
 
-    # -------------------- Normal AI request --------------------
+    # -------------------- Normal AI prompt --------------------
 
     base_prompt = f"""
 You are NEXUS, an intelligent AI assistant.
@@ -746,159 +746,123 @@ RECENT MEMORY:
 
     if should_research(query):
 
-        # News/research requests use LIVE research first.
         st.session_state.activity.append("Deep research")
 
-        research_task = await research(query)
+        research_result = await research(query)
 
-        results = [
-            research_task
-        ]
+        if research_result.get("error"):
+            st.session_state.activity.append("Research error")
 
-    else:
+        sources = research_result.get("sources", [])
 
-        # Normal questions use Gemini directly.
-        results = [
-            await gemini_text(
-                base_prompt,
-                images=images
+        draft = ""
+
+        # -------------------- Build research evidence --------------------
+
+        if sources:
+
+            st.session_state.activity.append(
+                "Preparing research evidence"
             )
-        ]
 
-    draft = ""
+            source_context_parts = []
 
-    research_result = {
-        "answer": "",
-        "sources": [],
-        "error": ""
-    }
+            for i, source in enumerate(
+                sources[:12],
+                start=1
+            ):
 
-    for result in results:
+                title = str(
+                    source.get("title", "Untitled")
+                ).strip()
 
-        if isinstance(result, dict):
-
-            research_result = result
-
-            if result.get("error"):
-                st.session_state.activity.append(
-                    "Research error"
+                content = clean_text(
+                    source.get("content", "")
                 )
 
-        elif isinstance(result, str):
+                url = str(
+                    source.get("url", "")
+                ).strip()
 
-            draft = result
+                source_context_parts.append(
+                    f"ARTICLE {i}\n"
+                    f"TITLE: {title}\n"
+                    f"CONTENT: {content[:1600]}\n"
+                    f"URL: {url}"
+                )
 
-    # -------------------- Research synthesis --------------------
-
-    if research_result["sources"]:
-
-        st.session_state.activity.append(
-            "Research synthesis"
-        )
-
-        source_context_parts = []
-
-        for i, source in enumerate(
-            research_result["sources"][:8],
-            start=1
-        ):
-
-            title = str(
-                source.get("title", "Untitled")
-            ).strip()
-
-            content = clean_text(
-                source.get("content", "")
+            source_context = "\n\n".join(
+                source_context_parts
             )
 
-            url = str(
-                source.get("url", "")
-            ).strip()
+            # -------------------- Strong synthesis prompt --------------------
 
-            source_context_parts.append(
-                "ARTICLE " + str(i) + "\n"
-                "TITLE: " + title + "\n"
-                "CONTENT: " + content[:1400] + "\n"
-                "URL: " + url
+            synthesis_prompt = f"""
+You are the NEXUS AI News Editor.
+
+The user asked:
+
+{query}
+
+You have LIVE web research below.
+
+Your job is to produce the final answer.
+
+STRICT RULES:
+
+1. Return EXACTLY 5 numbered items.
+2. Use this exact structure:
+
+1. ...
+2. ...
+3. ...
+4. ...
+5. ...
+
+3. Every item must describe ONE DISTINCT AI development.
+4. Do NOT repeat the same event.
+5. Multiple articles about the same event count as ONE event.
+6. Do NOT list two articles about the same company event as separate developments.
+7. Ignore duplicate coverage.
+8. Ignore articles that are not actually about a new AI development.
+9. Ignore opinion pieces unless they contain a concrete new event.
+10. Ignore general educational articles.
+11. Ignore unrelated financial, crime, entertainment, medical, travel, or lifestyle stories.
+12. Do NOT invent facts.
+13. Use ONLY information contained in the LIVE ARTICLES.
+14. Do NOT use pretrained knowledge to fill missing information.
+15. Do NOT include URLs.
+16. Do NOT include a Sources section.
+17. Do NOT add an introduction.
+18. Do NOT add a conclusion.
+19. Do NOT mention these instructions.
+
+Each item should be concise but informative.
+
+Prefer developments such as:
+- new AI models
+- AI product launches
+- major AI company announcements
+- AI partnerships
+- AI research developments
+- AI infrastructure developments
+- AI regulation or government announcements
+- major AI funding or deployment announcements
+
+If several articles describe the same development, combine them into ONE item.
+
+LIVE ARTICLES:
+
+{source_context}
+"""
+
+            st.session_state.activity.append(
+                "Research synthesis"
             )
 
-        source_context = "\n\n".join(
-            source_context_parts
-        )
+            # -------------------- Gemini synthesis --------------------
 
-        synthesis_prompt = (
-            "You are NEXUS News Editor.\n\n"
-
-            "The following articles were retrieved LIVE by NEXUS "
-            "from a web research service.\n\n"
-
-            "You MUST use these articles as your ONLY source "
-            "of information.\n\n"
-
-            "Do NOT use your pretrained knowledge to replace "
-            "the articles.\n"
-
-            "Do NOT say you lack internet access.\n"
-
-            "Do NOT discuss old AI developments unless they are "
-            "actually reported by the retrieved articles.\n"
-
-            "Do NOT create generic AI trends.\n"
-
-            "Do NOT invent facts.\n\n"
-
-            "USER REQUEST:\n"
-            + query
-            + "\n\n"
-
-            "TASK:\n"
-            "Extract exactly 5 DISTINCT concrete AI news events "
-            "from the retrieved articles.\n\n"
-
-            "Each item MUST:\n"
-            "- identify the company, organization, person, "
-            "product, model, research project, or regulator involved\n"
-            "- describe the specific event that happened\n"
-            "- be based directly on the retrieved evidence\n"
-            "- be different from the other four items\n\n"
-
-            "If several articles describe the same event, "
-            "count that event only once.\n\n"
-
-            "OUTPUT FORMAT:\n"
-            "1. [Specific event]\n"
-            "2. [Specific event]\n"
-            "3. [Specific event]\n"
-            "4. [Specific event]\n"
-            "5. [Specific event]\n\n"
-
-            "Return ONLY the five numbered items.\n"
-            "No introduction.\n"
-            "No Sources section.\n"
-            "No URLs.\n\n"
-
-            "LIVE ARTICLES:\n"
-            + source_context
-        )
-
-        # -------------------- Gemini synthesis --------------------
-
-        synthesized = await gemini_text(
-            synthesis_prompt
-        )
-
-        synthesized = clean_ai_response(
-            synthesized
-        )
-
-        # -------------------- Groq synthesis fallback --------------------
-
-        if (
-            not synthesized
-            or synthesized.startswith("⚠️")
-        ):
-
-            synthesized = await groq_text(
+            synthesized = await gemini_text(
                 synthesis_prompt
             )
 
@@ -906,80 +870,195 @@ RECENT MEMORY:
                 synthesized
             )
 
-        if (
-            synthesized
-            and not synthesized.startswith("⚠️")
-        ):
+            # -------------------- Validate Gemini output --------------------
 
-            draft = synthesized
+            numbered_items = re.findall(
+                r"(?m)^\s*[1-5][.)]\s+.+",
+                synthesized or ""
+            )
 
-    # -------------------- Safe fallback --------------------
+            if len(numbered_items) == 5:
+
+                draft = "\n".join(
+                    numbered_items
+                )
+
+            # -------------------- Groq backup synthesis --------------------
+
+            if not draft:
+
+                st.session_state.activity.append(
+                    "Backup synthesis"
+                )
+
+                groq_prompt = f"""
+You are NEXUS News Editor.
+
+Create EXACTLY 5 DISTINCT AI news developments
+from the live articles below.
+
+IMPORTANT:
+
+- Exactly 5 numbered items.
+- Use 1. through 5.
+- One real event per item.
+- Never repeat the same event.
+- Combine duplicate coverage.
+- Do not invent facts.
+- Use only the articles.
+- No introduction.
+- No conclusion.
+- No sources.
+- No URLs.
+
+LIVE ARTICLES:
+
+{source_context}
+"""
+
+                synthesized = await groq_text(
+                    groq_prompt
+                )
+
+                synthesized = clean_ai_response(
+                    synthesized
+                )
+
+                numbered_items = re.findall(
+                    r"(?m)^\s*[1-5][.)]\s+.+",
+                    synthesized or ""
+                )
+
+                if len(numbered_items) == 5:
+
+                    draft = "\n".join(
+                        numbered_items
+                    )
+
+            # -------------------- Final research fallback --------------------
+
+            if not draft:
+
+                st.session_state.activity.append(
+                    "Building evidence-based fallback"
+                )
+
+                fallback_items = []
+
+                seen_events = []
+
+                for source in sources:
+
+                    title = clean_text(
+                        source.get(
+                            "title",
+                            "AI development"
+                        )
+                    )
+
+                    content = clean_text(
+                        source.get(
+                            "content",
+                            ""
+                        )
+                    )
+
+                    if not title:
+                        continue
+
+                    title_tokens = set(
+                        re.findall(
+                            r"[a-zA-Z0-9]+",
+                            title.lower()
+                        )
+                    )
+
+                    duplicate = False
+
+                    for previous in seen_events:
+
+                        overlap = len(
+                            title_tokens & previous
+                        )
+
+                        similarity = (
+                            overlap /
+                            max(
+                                len(title_tokens),
+                                len(previous),
+                                1
+                            )
+                        )
+
+                        if similarity >= 0.55:
+                            duplicate = True
+                            break
+
+                    if duplicate:
+                        continue
+
+                    seen_events.append(
+                        title_tokens
+                    )
+
+                    if content:
+
+                        summary = content[:300].strip()
+
+                        fallback_items.append(
+                            f"{len(fallback_items) + 1}. "
+                            f"{title}: {summary}"
+                        )
+
+                    else:
+
+                        fallback_items.append(
+                            f"{len(fallback_items) + 1}. "
+                            f"{title}"
+                        )
+
+                    if len(fallback_items) == 5:
+                        break
+
+                if len(fallback_items) == 5:
+                    draft = "\n".join(
+                        fallback_items
+                    )
+
+        # -------------------- No research results --------------------
+
+        if not draft:
+
+            draft = (
+                "⚠️ NEXUS could not find enough distinct "
+                "AI developments from today's live research. "
+                "Please try again."
+            )
+
+    else:
+
+        # -------------------- Normal Gemini request --------------------
+
+        draft = await gemini_text(
+            base_prompt,
+            images=images
+        )
+
+        draft = clean_ai_response(
+            draft
+        )
+
+    # -------------------- Final cleanup --------------------
 
     draft = clean_ai_response(
         draft
     )
 
-    if (
-        not draft
-        or draft.startswith("⚠️")
-    ):
-
-        research_answer = clean_ai_response(
-            research_result.get("answer", "")
-        )
-
-        if research_answer:
-
-            draft = research_answer
-
-        else:
-
-            source_lines = []
-
-            for source in research_result.get(
-                "sources",
-                []
-            )[:5]:
-
-                title = str(
-                    source.get(
-                        "title",
-                        "Recent development"
-                    )
-                ).strip()
-
-                content = clean_text(
-                    source.get(
-                        "content",
-                        ""
-                    )
-                )
-
-                if content:
-
-                    source_lines.append(
-                        f"• {title}: {content[:220]}"
-                    )
-
-                else:
-
-                    source_lines.append(
-                        f"• {title}"
-                    )
-
-            if source_lines:
-
-                draft = "\n".join(
-                    source_lines
-                )
-
-    # -------------------- Final safety fallback --------------------
-
     if not draft:
 
         draft = (
-            "⚠️ NEXUS found recent research, but the final "
-            "answer could not be completed. Please try again."
+            "⚠️ NEXUS could not complete the request. "
+            "Please try again."
         )
 
     st.session_state.activity.extend([
@@ -996,13 +1075,17 @@ RECENT MEMORY:
 
     return {
         "answer": draft,
-        "sources": research_result.get(
-            "sources",
-            []
+        "sources": (
+            research_result.get("sources", [])
+            if should_research(query)
+            else []
         ),
-        "latency": time.perf_counter() - started,
+        "latency": (
+            time.perf_counter() - started
+        ),
     }
-                    
+
+          
 # -------------------- Styling --------------------
 
 st.markdown("""

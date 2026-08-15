@@ -742,7 +742,7 @@ RECENT MEMORY:
 
     # -------------------- Request routing --------------------
 
-        if should_research(query):
+    if should_research(query):
 
         q_lower = query.lower()
 
@@ -761,28 +761,12 @@ RECENT MEMORY:
 
         st.session_state.activity.append("Deep research")
 
-    asks_latest_model = any(
-        phrase in q_lower
-        for phrase in [
-            "latest ai model",
-            "latest model",
-            "newest ai model",
-            "new ai model",
-            "ai model released",
-            "model released today",
-            "model launch",
-        ]
-    )
-
-    st.session_state.activity.append("Deep research")
-
         research_result = await research(query)
 
         if research_result.get("error"):
             st.session_state.activity.append("Research error")
 
         sources = research_result.get("sources", [])
-
         draft = ""
 
         # -------------------- Build research evidence --------------------
@@ -823,9 +807,9 @@ RECENT MEMORY:
                 source_context_parts
             )
 
-            # -------------------- Strong synthesis prompt --------------------
+            # -------------------- Choose synthesis mode --------------------
 
-                        if asks_latest_model:
+            if asks_latest_model:
 
                 synthesis_prompt = f"""
 You are the NEXUS AI News Editor.
@@ -846,7 +830,7 @@ STRICT RULES:
 3. Identify the newest actual AI model release or announcement.
 4. The model must be supported by the LIVE ARTICLES.
 5. Do NOT confuse a partnership, funding round, conference,
-   regulation, training program, or opinion article with a model release.
+regulation, training program, or opinion article with a model release.
 6. Do NOT invent facts.
 7. Use ONLY information contained in the LIVE ARTICLES.
 8. Do NOT use pretrained knowledge to fill missing information.
@@ -956,18 +940,24 @@ LIVE ARTICLES:
                 synthesized
             )
 
-            # -------------------- Validate Gemini output --------------------
+            # -------------------- Validate output --------------------
 
-            numbered_items = re.findall(
-                r"(?m)^\s*[1-5][.)]\s+.+",
-                synthesized or ""
-            )
+            if asks_latest_model:
 
-            if len(numbered_items) == 5:
+                # For latest-model questions, accept a normal
+                # non-numbered model answer.
+                if synthesized and not synthesized.startswith("⚠️"):
+                    draft = synthesized
 
-                draft = "\n".join(
-                    numbered_items
+            else:
+
+                numbered_items = re.findall(
+                    r"(?m)^\s*[1-5][.)]\s+.+",
+                    synthesized or ""
                 )
+
+                if len(numbered_items) == 5:
+                    draft = "\n".join(numbered_items)
 
             # -------------------- Groq backup synthesis --------------------
 
@@ -977,7 +967,31 @@ LIVE ARTICLES:
                     "Backup synthesis"
                 )
 
-                groq_prompt = f"""
+                if asks_latest_model:
+
+                    groq_prompt = f"""
+You are NEXUS News Editor.
+
+Identify the SINGLE latest AI MODEL that was actually
+released or officially announced today.
+
+Rules:
+- Return exactly ONE model.
+- Use only the live articles.
+- Do not invent facts.
+- Do not choose funding, partnerships, regulation,
+training, conferences, or opinion articles.
+- Do not include URLs.
+- Do not include a Sources section.
+
+LIVE ARTICLES:
+
+{source_context}
+"""
+
+                else:
+
+                    groq_prompt = f"""
 You are NEXUS News Editor.
 
 Create EXACTLY 5 DISTINCT AI news developments
@@ -1010,149 +1024,156 @@ LIVE ARTICLES:
                     synthesized
                 )
 
-                numbered_items = re.findall(
-                    r"(?m)^\s*[1-5][.)]\s+.+",
-                    synthesized or ""
-                )
+                if asks_latest_model:
 
-                if len(numbered_items) == 5:
+                    if synthesized and not synthesized.startswith("⚠️"):
+                        draft = synthesized
 
-                    draft = "\n".join(
-                        numbered_items
+                else:
+
+                    numbered_items = re.findall(
+                        r"(?m)^\s*[1-5][.)]\s+.+",
+                        synthesized or ""
                     )
 
-            # -------------------- Final research fallback --------------------
+                    if len(numbered_items) == 5:
+                        draft = "\n".join(numbered_items)
 
-if asks_latest_model and not draft:
+            # -------------------- Evidence-based fallback --------------------
 
-    for source in sources:
-
-        title = clean_text(
-            source.get("title", "")
-        )
-
-        content = clean_text(
-            source.get("content", "")
-        )
-
-        combined = (
-            title + " " + content
-        ).lower()
-
-        if any(
-            term in combined
-            for term in [
-                "model released",
-                "model launch",
-                "new model",
-                "unveiled",
-                "introduced",
-                "open-weight",
-                "foundation model",
-            ]
-        ):
-            draft = (
-                f"{title}\n\n"
-                f"{content[:600]}"
-            )
-            break
-
-elif not draft:
+            if not draft:
 
                 st.session_state.activity.append(
                     "Building evidence-based fallback"
                 )
 
-                fallback_items = []
+                if asks_latest_model:
 
-                seen_events = []
+                    for source in sources:
 
-                for source in sources:
-
-                    title = clean_text(
-                        source.get(
-                            "title",
-                            "AI development"
-                        )
-                    )
-
-                    content = clean_text(
-                        source.get(
-                            "content",
-                            ""
-                        )
-                    )
-
-                    if not title:
-                        continue
-
-                    title_tokens = set(
-                        re.findall(
-                            r"[a-zA-Z0-9]+",
-                            title.lower()
-                        )
-                    )
-
-                    duplicate = False
-
-                    for previous in seen_events:
-
-                        overlap = len(
-                            title_tokens & previous
+                        title = clean_text(
+                            source.get("title", "")
                         )
 
-                        similarity = (
-                            overlap /
-                            max(
-                                len(title_tokens),
-                                len(previous),
-                                1
+                        content = clean_text(
+                            source.get("content", "")
+                        )
+
+                        combined = (
+                            title + " " + content
+                        ).lower()
+
+                        if any(
+                            term in combined
+                            for term in [
+                                "model released",
+                                "model launch",
+                                "new model",
+                                "unveiled",
+                                "introduced",
+                                "open-weight",
+                                "foundation model",
+                            ]
+                        ):
+
+                            draft = (
+                                f"{title}\n\n"
+                                f"{content[:600]}"
+                            )
+
+                            break
+
+                else:
+
+                    fallback_items = []
+                    seen_events = []
+
+                    for source in sources:
+
+                        title = clean_text(
+                            source.get(
+                                "title",
+                                "AI development"
                             )
                         )
 
-                        if similarity >= 0.55:
-                            duplicate = True
+                        content = clean_text(
+                            source.get(
+                                "content",
+                                ""
+                            )
+                        )
+
+                        if not title:
+                            continue
+
+                        title_tokens = set(
+                            re.findall(
+                                r"[a-zA-Z0-9]+",
+                                title.lower()
+                            )
+                        )
+
+                        duplicate = False
+
+                        for previous in seen_events:
+
+                            overlap = len(
+                                title_tokens & previous
+                            )
+
+                            similarity = (
+                                overlap /
+                                max(
+                                    len(title_tokens),
+                                    len(previous),
+                                    1
+                                )
+                            )
+
+                            if similarity >= 0.55:
+                                duplicate = True
+                                break
+
+                        if duplicate:
+                            continue
+
+                        seen_events.append(
+                            title_tokens
+                        )
+
+                        if content:
+
+                            summary = content[:300].strip()
+
+                            fallback_items.append(
+                                f"{len(fallback_items) + 1}. "
+                                f"{title}: {summary}"
+                            )
+
+                        else:
+
+                            fallback_items.append(
+                                f"{len(fallback_items) + 1}. "
+                                f"{title}"
+                            )
+
+                        if len(fallback_items) == 5:
                             break
 
-                    if duplicate:
-                        continue
-
-                    seen_events.append(
-                        title_tokens
-                    )
-
-                    if content:
-
-                        summary = content[:300].strip()
-
-                        fallback_items.append(
-                            f"{len(fallback_items) + 1}. "
-                            f"{title}: {summary}"
-                        )
-
-                    else:
-
-                        fallback_items.append(
-                            f"{len(fallback_items) + 1}. "
-                            f"{title}"
-                        )
-
                     if len(fallback_items) == 5:
-                        break
-
-                if len(fallback_items) == 5:
-                    draft = "\n".join(
-                        fallback_items
-                    )
+                        draft = "\n".join(
+                            fallback_items
+                        )
 
         # -------------------- No research results --------------------
 
         if not draft:
 
             draft = (
-                "⚠️ NEXUS could not find enough distinct "
-                "AI developments from today's live research. "
-                "Please try again."
+                "⚠️ NEXUS could not find enough "
+                "relevant AI information from today's "
+                "live research. Please try again."
             )
 
     else:
@@ -1204,7 +1225,6 @@ elif not draft:
             time.perf_counter() - started
         ),
     }
-
           
 # -------------------- Styling --------------------
 

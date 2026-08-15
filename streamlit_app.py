@@ -661,13 +661,11 @@ RECENT MEMORY:
 {memory_context or "(none)"}
 """
 
-        # -------------------- Request routing --------------------
+    # -------------------- Request routing --------------------
 
     if should_research(query):
 
-        # News/research requests must use LIVE research first.
-        # Do not generate a normal Gemini answer that could
-        # override the retrieved evidence.
+        # News/research requests use LIVE research first.
         st.session_state.activity.append("Deep research")
 
         research_task = await research(query)
@@ -687,6 +685,7 @@ RECENT MEMORY:
         ]
 
     draft = ""
+
     research_result = {
         "answer": "",
         "sources": [],
@@ -694,20 +693,27 @@ RECENT MEMORY:
     }
 
     for result in results:
+
         if isinstance(result, dict):
+
             research_result = result
 
             if result.get("error"):
-                st.session_state.activity.append("Research error")
+                st.session_state.activity.append(
+                    "Research error"
+                )
 
         elif isinstance(result, str):
+
             draft = result
 
     # -------------------- Research synthesis --------------------
 
     if research_result["sources"]:
 
-        st.session_state.activity.append("Research synthesis")
+        st.session_state.activity.append(
+            "Research synthesis"
+        )
 
         source_context_parts = []
 
@@ -715,6 +721,7 @@ RECENT MEMORY:
             research_result["sources"][:8],
             start=1
         ):
+
             title = str(
                 source.get("title", "Untitled")
             ).strip()
@@ -734,39 +741,66 @@ RECENT MEMORY:
                 "URL: " + url
             )
 
-                        source_context = "\n\n".join(
+        source_context = "\n\n".join(
             source_context_parts
         )
 
         synthesis_prompt = (
             "You are NEXUS News Editor.\n\n"
+
             "The following articles were retrieved LIVE by NEXUS "
             "from a web research service.\n\n"
+
             "You MUST use these articles as your ONLY source "
             "of information.\n\n"
+
             "Do NOT use your pretrained knowledge to replace "
             "the articles.\n"
+
             "Do NOT say you lack internet access.\n"
+
+            "Do NOT discuss old AI developments unless they are "
+            "actually reported by the retrieved articles.\n"
+
+            "Do NOT create generic AI trends.\n"
+
             "Do NOT invent facts.\n\n"
+
             "USER REQUEST:\n"
             + query
             + "\n\n"
+
             "TASK:\n"
             "Extract exactly 5 DISTINCT concrete AI news events "
             "from the retrieved articles.\n\n"
+
+            "Each item MUST:\n"
+            "- identify the company, organization, person, "
+            "product, model, research project, or regulator involved\n"
+            "- describe the specific event that happened\n"
+            "- be based directly on the retrieved evidence\n"
+            "- be different from the other four items\n\n"
+
+            "If several articles describe the same event, "
+            "count that event only once.\n\n"
+
             "OUTPUT FORMAT:\n"
             "1. [Specific event]\n"
             "2. [Specific event]\n"
             "3. [Specific event]\n"
             "4. [Specific event]\n"
             "5. [Specific event]\n\n"
+
             "Return ONLY the five numbered items.\n"
             "No introduction.\n"
             "No Sources section.\n"
             "No URLs.\n\n"
+
             "LIVE ARTICLES:\n"
             + source_context
         )
+
+        # -------------------- Gemini synthesis --------------------
 
         synthesized = await gemini_text(
             synthesis_prompt
@@ -776,13 +810,13 @@ RECENT MEMORY:
             synthesized
         )
 
-        # If Gemini synthesis fails, use Groq to format
-        # the already-retrieved live research instead of
-        # dumping raw article text to the user.
+        # -------------------- Groq synthesis fallback --------------------
+
         if (
             not synthesized
             or synthesized.startswith("⚠️")
         ):
+
             synthesized = await groq_text(
                 synthesis_prompt
             )
@@ -791,50 +825,77 @@ RECENT MEMORY:
                 synthesized
             )
 
-        if synthesized and not synthesized.startswith("⚠️"):
+        if (
+            synthesized
+            and not synthesized.startswith("⚠️")
+        ):
+
             draft = synthesized
 
     # -------------------- Safe fallback --------------------
 
-    draft = clean_ai_response(draft)
+    draft = clean_ai_response(
+        draft
+    )
 
-    if not draft or draft.startswith("⚠️"):
+    if (
+        not draft
+        or draft.startswith("⚠️")
+    ):
 
         research_answer = clean_ai_response(
             research_result.get("answer", "")
         )
 
         if research_answer:
+
             draft = research_answer
 
         else:
-            # Last-resort compact fallback.
+
             source_lines = []
 
-            for source in research_result.get("sources", [])[:5]:
+            for source in research_result.get(
+                "sources",
+                []
+            )[:5]:
+
                 title = str(
-                    source.get("title", "Recent development")
+                    source.get(
+                        "title",
+                        "Recent development"
+                    )
                 ).strip()
 
                 content = clean_text(
-                    source.get("content", "")
+                    source.get(
+                        "content",
+                        ""
+                    )
                 )
 
                 if content:
+
                     source_lines.append(
                         f"• {title}: {content[:220]}"
                     )
+
                 else:
+
                     source_lines.append(
                         f"• {title}"
                     )
 
             if source_lines:
-                draft = "\n".join(source_lines)
+
+                draft = "\n".join(
+                    source_lines
+                )
 
     # -------------------- Final safety fallback --------------------
 
     if not draft:
+
         draft = (
             "⚠️ NEXUS found recent research, but the final "
             "answer could not be completed. Please try again."
@@ -845,22 +906,22 @@ RECENT MEMORY:
         "Memory updated"
     ])
 
-    save_memory(query, draft)
+    save_memory(
+        query,
+        draft
+    )
 
     st.session_state.request_count += 1
 
     return {
         "answer": draft,
-        "sources": research_result.get("sources", []),
+        "sources": research_result.get(
+            "sources",
+            []
+        ),
         "latency": time.perf_counter() - started,
     }
-
-    
-         
-
-    
-
-    
+                    
 # -------------------- Styling --------------------
 
 st.markdown("""

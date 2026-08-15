@@ -712,7 +712,7 @@ RECENT MEMORY:
 
             source_context_parts.append(
                 f"TITLE: {title}\n"
-                f"CONTENT: {content[:700]}"
+                f"CONTENT: {content[:1400]}"
             )
 
         source_context = "\n\n".join(source_context_parts)

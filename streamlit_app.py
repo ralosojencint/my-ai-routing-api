@@ -493,26 +493,22 @@ Return evidence for multiple distinct developments.
 def should_research(query):
     q = query.lower()
 
-    return bool(TAVILY_API_KEY) and any(
-        phrase in q for phrase in [
-            "latest",
-            "today",
-            "current",
-            "breaking news",
-            "recent news",
-            "what happened today",
-            "what happened in ai",
-            "news about",
-            "latest news",
-            "2026 news"
-        ]
-    )
-    q = query.lower()
-    return bool(TAVILY_API_KEY) and any(
-        word in q for word in
-        ["latest", "today", "current", "news", "recent", "research", "2026"]
-    )
+    research_words = [
+        "latest",
+        "today",
+        "current",
+        "news",
+        "recent",
+        "breaking",
+        "research",
+        "2026",
+        "what happened",
+        "developments",
+    ]
 
+    return bool(TAVILY_API_KEY) and any(
+        word in q for word in research_words
+    )
 async def answer_user(query, images=None):
     started = time.perf_counter()
 

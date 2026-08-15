@@ -590,7 +590,7 @@ TAVILY SOURCES:
 Answer ONLY the USER REQUEST above. Do not answer a different question or repeat information from previous conversations.
 """
 
-                        draft = await gemini_text(synthesis_prompt)
+                                draft = await gemini_text(synthesis_prompt)
 
     draft = clean_ai_response(draft)
 

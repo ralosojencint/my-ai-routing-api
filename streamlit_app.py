@@ -453,6 +453,7 @@ def should_research(query):
 
 async def answer_user(query, images=None):
     started = time.perf_counter()
+
     st.session_state.activity = [
         "Understanding request",
         "Building plan"
@@ -495,8 +496,8 @@ RECENT PERSISTENT MEMORY:
     ]
 
     if should_research(query):
-    jobs.append(research(query))
-    st.session_state.activity.append("Deep research")
+        jobs.append(research(query))
+        st.session_state.activity.append("Deep research")
 
     results = await asyncio.gather(
         *jobs,
@@ -504,6 +505,7 @@ RECENT PERSISTENT MEMORY:
     )
 
     draft = ""
+
     research_result = {
         "answer": "",
         "sources": [],
@@ -511,16 +513,16 @@ RECENT PERSISTENT MEMORY:
     }
 
     for result in results:
-    if isinstance(result, dict):
-        research_result = result
+        if isinstance(result, dict):
+            research_result = result
 
-        if result.get("error"):
-            st.session_state.activity.append(
-                "Research error"
-            )
+            if result.get("error"):
+                st.session_state.activity.append(
+                    "Research error"
+                )
 
-    elif isinstance(result, str):
-        draft = result
+        elif isinstance(result, str):
+            draft = result
 
     if research_result["answer"] or research_result["sources"]:
         st.session_state.activity.append(
@@ -578,12 +580,7 @@ Produce the final answer now.
             synthesis_prompt
         )
 
-    draft = re.sub(
-        r"<think>.*?</think>",
-        "",
-        draft or "",
-        flags=re.DOTALL | re.IGNORECASE
-    ).strip()
+    draft = clean_ai_response(draft)
 
     st.session_state.activity.extend([
         "Result checked",
@@ -599,9 +596,6 @@ Produce the final answer now.
         "sources": research_result.get("sources", []),
         "latency": time.perf_counter() - started,
     }
-
-    
-
 
 
 # -------------------- Styling --------------------

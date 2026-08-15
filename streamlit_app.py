@@ -444,66 +444,36 @@ async def research(query):
             "error": "Tavily client is not available. Check TAVILY_API_KEY."
         }
 
+    from datetime import date
+
+    current_date = date.today().isoformat()
+
+    queries = [
+        f"AI artificial intelligence news today {current_date}",
+        f"AI company product model announcement today {current_date}",
+        f"AI research funding regulation partnership today {current_date}",
+    ]
+
     try:
-        from datetime import datetime
-        from zoneinfo import ZoneInfo
+        results = await asyncio.gather(
+            *[
+                asyncio.to_thread(
+                    client.search,
+                    query=q,
+                    search_depth="advanced",
+                    max_results=6,
+                    include_answer=True,
+                )
+                for q in queries
+            ],
+            return_exceptions=True,
+        )
 
-        today = datetime.now(
-            ZoneInfo("Asia/Manila")
-        ).date().isoformat()
+        sources = []
+        seen_urls = set()
+        seen_titles = set()
 
-        search_queries = [
-            f"AI news announcements {today}",
-            f"artificial intelligence company news {today}",
-            f"AI model launch research funding regulation {today}",
-            f"OpenAI Anthropic Google Meta Microsoft Nvidia AI {today}",
-        ]
-
-        trusted_domains = [
-            "reuters.com",
-            "apnews.com",
-            "bloomberg.com",
-            "ft.com",
-            "techcrunch.com",
-            "theverge.com",
-            "technologyreview.com",
-            "blog.google",
-            "deepmind.google",
-            "openai.com",
-            "anthropic.com",
-            "about.fb.com",
-            "blogs.microsoft.com",
-            "nvidianews.nvidia.com",
-        ]
-
-        all_results = []
-
-        for search_query in search_queries:
-            result = await asyncio.to_thread(
-    client.search,
-    query=search_query,
-    search_depth="advanced",
-    max_results=6,
-    include_answer=False,
-)
-
-            all_results.extend(
-                result.get("results", [])
-            )
-
-        unique = {}
-
-        for source in all_results:
-            url = str(
-                source.get("url", "")
-            ).strip()
-
-            if url and url not in unique:
-                unique[url] = source
-
-        candidates = []
-
-        forbidden = [
+        irrelevant = [
             "horoscope",
             "stock market",
             "weather",
@@ -516,189 +486,111 @@ async def research(query):
             "recipe",
             "jobs",
             "travel",
-            "predictions",
-            "trends",
         ]
 
-        event_words = [
-            "announced",
-            "launch",
-            "launched",
-            "released",
-            "unveiled",
-            "introduced",
-            "acquired",
-            "acquisition",
-            "funding",
-            "investment",
-            "invested",
-            "partnership",
-            "approved",
-            "registered",
-            "deployed",
-            "published",
-            "research",
-            "study",
-            "policy",
-            "regulation",
-        ]
-
-        ai_words = [
+        ai_terms = [
             "artificial intelligence",
-            "ai",
+            " ai ",
             "machine learning",
             "generative ai",
             "ai model",
-            "ai agent",
             "ai system",
-            "ai chip",
-            "ai research",
             "ai policy",
             "ai regulation",
+            "ai service",
+            "ai company",
+            "ai research",
+            "ai agent",
             "openai",
+            "google deepmind",
             "anthropic",
-            "google",
-            "deepmind",
-            "meta",
-            "microsoft",
+            "meta ai",
+            "microsoft ai",
+            "apple intelligence",
             "nvidia",
-            "apple",
+            "gemini",
+            "claude",
+            "chatgpt",
         ]
 
-        for source in unique.values():
-            title = str(
-                source.get("title", "")
-            ).strip()
+        answers = []
 
-            content = str(
-                source.get("content", "")
-            ).strip()
-
-            url = str(
-                source.get("url", "")
-            ).strip()
-
-            published = str(
-                source.get("published_date", "")
-            ).strip()
-
-            combined = (
-                f"{title} {content} {url}"
-            ).lower()
-
-            if any(
-                word in combined
-                for word in forbidden
-            ):
+        for result in results:
+            if isinstance(result, Exception):
                 continue
 
-            if not any(
-                word in combined
-                for word in ai_words
-            ):
+            if not isinstance(result, dict):
                 continue
 
-            if not any(
-                word in combined
-                for word in event_words
-            ):
-                continue
+            answer = str(result.get("answer", "")).strip()
 
-            candidates.append({
-                "title": title,
-                "content": content,
-                "url": url,
-                "published_date": published,
-            })
+            if answer:
+                answers.append(answer[:1200])
 
-        if not candidates:
-            return {
-                "answer": "",
-                "sources": [],
-                "error": "No credible AI news articles were found today."
-            }
+            for source in result.get("results", []):
+                title = str(
+                    source.get("title", "")
+                ).strip()
 
-        evidence = "\n\n".join(
-            f"ARTICLE {i + 1}\n"
-            f"TITLE: {item['title']}\n"
-            f"PUBLISHED: {item['published_date']}\n"
-            f"CONTENT: {item['content'][:1200]}\n"
-            f"URL: {item['url']}"
-            for i, item in enumerate(candidates[:15])
-        )
+                content = str(
+                    source.get("content", "")
+                ).strip()
 
-        verification_prompt = f"""
-You are NEXUS News Verification.
+                url = str(
+                    source.get("url", "")
+                ).strip()
 
-TODAY:
-{today}
+                combined = (
+                    title.lower()
+                    + " "
+                    + content.lower()
+                    + " "
+                    + url.lower()
+                )
 
-USER REQUEST:
-{query}
+                if not title or not content:
+                    continue
 
-You have been given real search-result evidence below.
+                if any(word in combined for word in irrelevant):
+                    continue
 
-Your task is to produce EXACTLY 5 REAL and DISTINCT
-AI NEWS DEVELOPMENTS.
+                if not any(term in combined for term in ai_terms):
+                    continue
 
-CRITICAL RULES:
+                url_key = url.lower().rstrip("/")
+                title_key = re.sub(
+                    r"[^a-z0-9]+",
+                    " ",
+                    title.lower()
+                ).strip()
 
-1. Every item MUST describe a specific event.
-2. Every item MUST be supported by at least one article below.
-3. Name the company, organization, researcher, product,
-   model, policy, funding round, acquisition, or other
-   concrete subject involved.
-4. Do NOT write generic trends.
-5. Do NOT write predictions.
-6. Do NOT write things like "AI adoption is accelerating."
-7. Do NOT invent an event that is not explicitly supported
-   by the evidence.
-8. Do NOT combine unrelated articles into a fake event.
-9. Prefer articles published TODAY.
-10. If fewer than 5 credible events are available today,
-    use the newest credible events available.
-11. If multiple articles describe the same event,
-    count it as ONE development.
-12. Do not use YouTube videos as evidence.
-13. Do not use generic trend articles as evidence.
-14. Do not use unrelated articles.
-15. Return exactly 5 numbered developments.
-16. Each development should be 1-2 sentences.
-17. Do NOT include a Sources section.
-18. Do NOT include URLs.
+                if url_key and url_key in seen_urls:
+                    continue
 
-BAD EXAMPLE:
-"Enterprise AI deployment is accelerating."
+                if title_key and title_key in seen_titles:
+                    continue
 
-GOOD EXAMPLE:
-"Company X announced a new AI model for Y, saying it
-will be available to Z customers."
+                if url_key:
+                    seen_urls.add(url_key)
 
-SEARCH EVIDENCE:
+                if title_key:
+                    seen_titles.add(title_key)
 
-{evidence}
+                source_copy = dict(source)
 
-FINAL ANSWER:
-"""
+                source_copy["title"] = title
+                source_copy["content"] = content[:1400]
+                source_copy["url"] = url
 
-        verified = await gemini_text(
-            verification_prompt
-        )
+                sources.append(source_copy)
 
-        verified = clean_ai_response(
-            verified
-        )
+        sources = sources[:12]
 
-        if not verified:
-            return {
-                "answer": "",
-                "sources": candidates[:5],
-                "error": "AI news verification returned no answer."
-            }
+        research_answer = "\n\n".join(answers[:3])
 
         return {
-            "answer": verified,
-            "sources": candidates[:5],
+            "answer": research_answer,
+            "sources": sources,
             "error": "",
         }
 
@@ -708,7 +600,7 @@ FINAL ANSWER:
             "sources": [],
             "error": f"{type(exc).__name__}: {exc}",
         }
-                        
+      
 def should_research(query):
     q = query.lower()
 

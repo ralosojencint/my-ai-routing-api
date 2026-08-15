@@ -587,7 +587,7 @@ TAVILY SOURCES:
 
 {source_context or "(no individual sources returned)"}
 
-Produce the final answer now.
+Answer ONLY the USER REQUEST above. Do not answer a different question or repeat information from previous conversations.
 """
 
         draft = await gemini_text(

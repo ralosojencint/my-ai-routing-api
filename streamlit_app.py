@@ -154,10 +154,10 @@ async def groq_text(prompt, images=None):
     try:
         client = groq_client()
 
-        if client is None:
+                if client is None:
             return "⚠️ Groq client could not be initialized."
 
-                # Keep fallback requests compact enough for Groq's TPM limit.
+        # Keep fallback requests compact enough for Groq's TPM limit.
         prompt = prompt[:6000]
         user_content = [
             {

@@ -453,38 +453,23 @@ def should_research(query):
 
 async def answer_user(query, images=None):
     started = time.perf_counter()
-    st.session_state.activity = ["Understanding request", "Building plan"]
+    st.session_state.activity = [
+        "Understanding request",
+        "Building plan"
+    ]
 
     docs = retrieve_documents(query)
+
     document_context = "\n\n".join(
-        f"[{d['name']}]\n{d['text']}" for d in docs
+        f"[{d['name']}]\n{d['text']}"
+        for d in docs
     )
 
     memories = load_memories()
 
-# Only use memory when it is actually relevant to the current question.
-relevant_memories = []
-
-query_terms = set(
-    re.findall(r"[a-zA-Z0-9_]+", query.lower())
-)
-
-for user_text, assistant_text in memories:
-    memory_terms = set(
-        re.findall(
-            r"[a-zA-Z0-9_]+",
-            f"{user_text} {assistant_text}".lower()
-        )
-    )
-
-    if query_terms & memory_terms:
-        relevant_memories.append(
-            (user_text, assistant_text)
-        )
-
     memory_context = "\n\n".join(
         f"User: {u}\nNEXUS: {a}"
-        for u, a in relevant_memories[-6:]
+        for u, a in memories
     )
 
     base_prompt = f"""
@@ -505,16 +490,25 @@ RECENT PERSISTENT MEMORY:
 {memory_context or "(none)"}
 """
 
-    jobs = [gemini_text(base_prompt, images=images)]
+    jobs = [
+        gemini_text(base_prompt, images=images)
+    ]
 
     if should_research(query):
         jobs.append(research(query))
         st.session_state.activity.append("Deep research")
 
-    results = await asyncio.gather(*jobs, return_exceptions=True)
+    results = await asyncio.gather(
+        *jobs,
+        return_exceptions=True
+    )
 
     draft = ""
-    research_result = {"answer": "", "sources": []}
+    research_result = {
+        "answer": "",
+        "sources": [],
+        "error": ""
+    }
 
     for result in results:
         if isinstance(result, dict):
@@ -523,22 +517,24 @@ RECENT PERSISTENT MEMORY:
             draft = result
 
     if research_result["answer"] or research_result["sources"]:
-        st.session_state.activity.append("Research synthesis")
+        st.session_state.activity.append(
+            "Research synthesis"
+        )
 
         source_context = "\n\n".join(
-    f"Title: {source.get('title', 'Untitled')}\n"
-    f"Content: {source.get('content', '')[:1800]}\n"
-    f"Snippet: {source.get('snippet', '')[:800]}"
-    for source in research_result["sources"][:5]
-)
+            f"Title: {source.get('title', 'Untitled')}\n"
+            f"URL: {source.get('url', '')}\n"
+            f"Content: {source.get('content', '')[:2500]}"
+            for source in research_result["sources"][:6]
+        )
 
-        draft = await gemini_text(
-            f"""
+        synthesis_prompt = f"""
 You are NEXUS performing research synthesis.
 
 Answer the user's request using the Tavily research evidence below.
 
 IMPORTANT RULES FOR CURRENT / LATEST / RECENT QUESTIONS:
+
 - Prioritize the newest information in the provided sources.
 - Pay close attention to publication dates and event dates.
 - Do not present old information as current.
@@ -547,7 +543,8 @@ IMPORTANT RULES FOR CURRENT / LATEST / RECENT QUESTIONS:
 - Do not use your own prior knowledge to override the provided research.
 - Do not invent facts, dates, sources, URLs, citations, or publication details.
 - Do not create a "Sources" section in your answer.
-- Do not output source URLs or markdown links. The NEXUS interface will display the verified Tavily sources separately.
+- Do not output source URLs or markdown links.
+- The NEXUS interface will display verified Tavily sources separately.
 - If the provided research does not contain enough recent information, say so instead of guessing.
 - Answer the user's actual question directly before giving background context.
 - Limit the final answer to 5 key developments.
@@ -555,33 +552,40 @@ IMPORTANT RULES FOR CURRENT / LATEST / RECENT QUESTIONS:
 - Finish every bullet completely.
 - Do not start a new section if you cannot finish it.
 - Never end the response with an incomplete bullet or sentence.
-- Never output <think>, </think>, <thinking>, or internal reasoning.
-- Never describe your hidden reasoning or analysis process.
-- Return only the final answer intended for the user.
+
 USER REQUEST:
+
 {query}
 
 TAVILY RESEARCH SUMMARY:
-{research_result.get('answer', '')}
+
+{research_result.get("answer", "")}
 
 TAVILY SOURCES:
+
 {source_context or "(no individual sources returned)"}
 
-Use the research evidence above to produce a complete answer.
-Keep the answer concise enough to finish fully.
-Do not stop mid-sentence or mid-bullet.
+Produce the final answer now.
 """
+
+        draft = await gemini_text(
+            synthesis_prompt
         )
 
-            # Remove any visible model reasoning from the final answer.
-    draft = clean_ai_response(draft)
+    draft = re.sub(
+        r"<think>.*?</think>",
+        "",
+        draft or "",
+        flags=re.DOTALL | re.IGNORECASE
+    ).strip()
 
     st.session_state.activity.extend([
         "Result checked",
-        "Memory updated",
+        "Memory updated"
     ])
 
     save_memory(query, draft)
+
     st.session_state.request_count += 1
 
     return {
@@ -589,6 +593,10 @@ Do not stop mid-sentence or mid-bullet.
         "sources": research_result.get("sources", []),
         "latency": time.perf_counter() - started,
     }
+
+    
+
+
 
 # -------------------- Styling --------------------
 

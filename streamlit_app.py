@@ -483,11 +483,61 @@ STRICT REQUIREMENTS:
             include_answer=True,
         )
 
-        return {
-            "answer": result.get("answer", ""),
-            "sources": result.get("results", []),
-            "error": "",
-        }
+        sources = []
+
+for source in result.get("results", []):
+    title = str(source.get("title", "")).lower()
+    content = str(source.get("content", "")).lower()
+    url = str(source.get("url", "")).lower()
+
+    combined = f"{title} {content} {url}"
+
+    # Reject obvious non-AI results.
+    irrelevant = [
+        "horoscope",
+        "stock market",
+        "weather",
+        "sports",
+        "flight",
+        "admissions",
+        "insurance",
+        "real estate",
+        "celebrity",
+        "recipe",
+    ]
+
+    if any(word in combined for word in irrelevant):
+        continue
+
+    # Keep results that actually contain AI-related evidence.
+    ai_terms = [
+        "artificial intelligence",
+        " ai ",
+        "machine learning",
+        "generative ai",
+        "ai model",
+        "ai system",
+        "ai policy",
+        "ai regulation",
+        "ai service",
+        "ai company",
+        "openai",
+        "google deepmind",
+        "anthropic",
+        "meta ai",
+        "microsoft ai",
+        "apple intelligence",
+        "nvidia",
+    ]
+
+    if any(term in combined for term in ai_terms):
+        sources.append(source)
+
+return {
+    "answer": result.get("answer", ""),
+    "sources": sources[:6],
+    "error": "",
+}
 
     except Exception as exc:
         return {

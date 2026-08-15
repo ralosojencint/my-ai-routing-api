@@ -532,17 +532,13 @@ RECENT PERSISTENT MEMORY:
             research_result = result
 
             if result.get("error"):
-                st.session_state.activity.append(
-                    "Research error"
-                )
+                st.session_state.activity.append("Research error")
 
         elif isinstance(result, str):
             draft = result
 
     if research_result["answer"] or research_result["sources"]:
-        st.session_state.activity.append(
-            "Research synthesis"
-        )
+        st.session_state.activity.append("Research synthesis")
 
         source_context = "\n\n".join(
             f"Title: {source.get('title', 'Untitled')}\n"
@@ -590,7 +586,7 @@ TAVILY SOURCES:
 Answer ONLY the USER REQUEST above. Do not answer a different question or repeat information from previous conversations.
 """
 
-                                draft = await gemini_text(synthesis_prompt)
+        draft = await gemini_text(synthesis_prompt)
 
     draft = clean_ai_response(draft)
 
@@ -617,13 +613,6 @@ Answer ONLY the USER REQUEST above. Do not answer a different question or repeat
         "sources": research_result.get("sources", []),
         "latency": time.perf_counter() - started,
     }
-
-    
-
-
-    
-
-            
 
 
 # -------------------- Styling --------------------

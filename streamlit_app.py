@@ -616,10 +616,15 @@ Answer ONLY the USER REQUEST above. Do not answer a different question or repeat
         if draft.startswith("⚠️"):
             draft = ""
 
-    draft = clean_ai_response(draft)
+        draft = clean_ai_response(draft)
 
-    if not draft or len(draft.strip()) < 80:
-        draft = research_result.get("answer", "").strip()
+    if not draft:
+        research_answer = clean_ai_response(
+            research_result.get("answer", "").strip()
+        )
+
+        if research_answer:
+            draft = research_answer
 
     if not draft:
         draft = (

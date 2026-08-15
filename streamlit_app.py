@@ -840,6 +840,14 @@ async def answer_user(query, images=None):
         for d in docs[:6]
     )
 
+    dataset_context = "\n\n".join(
+    f"[{d['name']}]\n"
+    f"Columns: {', '.join(str(c) for c in d['data'].columns)}\n"
+    f"Rows: {len(d['data'])}\n"
+    f"Data:\n{d['data'].head(100).to_csv(index=False)}"
+    for d in st.session_state.datasets
+)
+    
     memories = load_memories()
 
     memory_context = "\n\n".join(

@@ -157,7 +157,9 @@ async def groq_text(prompt, images=None):
         if client is None:
             return "⚠️ Groq client could not be initialized."
 
-                prompt = prompt[:12000]
+        # Keep fallback requests compact enough for Groq's TPM limit.
+        if images:
+            prompt = prompt[:12000]
 
         user_content = [
             {
@@ -209,7 +211,6 @@ async def groq_text(prompt, images=None):
         if not answer:
             return "⚠️ Groq returned an empty response."
 
-        # Remove visible reasoning blocks.
         answer = re.sub(
             r"<think>.*?</think>",
             "",

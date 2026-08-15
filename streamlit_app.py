@@ -445,11 +445,35 @@ async def research(query):
         }
 
     try:
+        # Force news/current-event searches to focus on the current day.
+        current_date = time.strftime("%B %d, %Y")
+
+        research_query = f"""
+{query}
+
+Focus ONLY on real AI news and developments published around
+{current_date}.
+
+Prioritize:
+- announcements
+- product/model launches
+- company developments
+- funding/acquisitions
+- major research releases
+- regulation/policy
+- important AI industry events
+
+Do NOT give general AI trends or background information.
+Do NOT use old articles unless they directly report a new development.
+Return evidence for multiple distinct developments.
+"""
+
         result = await asyncio.to_thread(
             client.search,
-            query=query,
+            query=research_query,
             search_depth="advanced",
-            max_results=6,
+            topic="news",
+            max_results=8,
             include_answer=True,
         )
 
@@ -460,12 +484,10 @@ async def research(query):
         }
 
     except Exception as exc:
-        error_message = f"{type(exc).__name__}: {exc}"
-
         return {
             "answer": "",
             "sources": [],
-            "error": error_message,
+            "error": f"{type(exc).__name__}: {exc}",
         }
 
 def should_research(query):

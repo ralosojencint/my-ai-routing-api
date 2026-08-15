@@ -449,13 +449,18 @@ async def research(query):
 
         current_date = date.today().isoformat()
 
-        research_query = f"""
-Find exactly 5 REAL, specific artificial-intelligence news developments
-from today or the most recent available AI news.
-
-current_date = date.today().isoformat()
-
-research_query = f"Find exactly 5 real and distinct AI news developments for {current_date}. Prioritize developments published today, then yesterday. Use specific, verifiable AI events only. Avoid generic trends, predictions, and unrelated topics. Prefer reputable news sources, official company announcements, government sources, and research organizations. Do not invent facts. User request: {query}"
+        research_query = (
+            f"Find exactly 5 real and distinct AI news developments "
+            f"for {current_date}. "
+            f"Prioritize developments published today, then yesterday. "
+            f"Use specific, verifiable AI events only. "
+            f"Avoid generic trends, predictions, and unrelated topics. "
+            f"Prefer Reuters, AP, Bloomberg, Financial Times, official "
+            f"company announcements, government sources, research "
+            f"organizations, and established technology publications. "
+            f"Do not invent facts. "
+            f"User request: {query}"
+        )
 
         result = await asyncio.to_thread(
             client.search,
@@ -492,7 +497,6 @@ research_query = f"Find exactly 5 real and distinct AI news developments for {cu
 
             ai_terms = [
                 "artificial intelligence",
-                " ai ",
                 "machine learning",
                 "generative ai",
                 "ai model",
@@ -520,14 +524,12 @@ research_query = f"Find exactly 5 real and distinct AI news developments for {cu
         }
 
     except Exception as exc:
-        error_message = f"{type(exc).__name__}: {exc}"
-
         return {
             "answer": "",
             "sources": [],
-            "error": error_message,
+            "error": f"{type(exc).__name__}: {exc}",
         }
-            
+                   
 def should_research(query):
     q = query.lower()
 

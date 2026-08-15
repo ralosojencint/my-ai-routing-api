@@ -482,10 +482,10 @@ for user_text, assistant_text in memories:
             (user_text, assistant_text)
         )
 
-memory_context = "\n\n".join(
-    f"User: {u}\nNEXUS: {a}"
-    for u, a in relevant_memories[-6:]
-)
+    memory_context = "\n\n".join(
+        f"User: {u}\nNEXUS: {a}"
+        for u, a in relevant_memories[-6:]
+    )
 
     base_prompt = f"""
 You are NEXUS, an agentic research and reasoning workspace.

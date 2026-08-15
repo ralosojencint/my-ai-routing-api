@@ -1008,7 +1008,41 @@ LIVE ARTICLES:
 
             # -------------------- Final research fallback --------------------
 
-            if not draft:
+if asks_latest_model and not draft:
+
+    for source in sources:
+
+        title = clean_text(
+            source.get("title", "")
+        )
+
+        content = clean_text(
+            source.get("content", "")
+        )
+
+        combined = (
+            title + " " + content
+        ).lower()
+
+        if any(
+            term in combined
+            for term in [
+                "model released",
+                "model launch",
+                "new model",
+                "unveiled",
+                "introduced",
+                "open-weight",
+                "foundation model",
+            ]
+        ):
+            draft = (
+                f"{title}\n\n"
+                f"{content[:600]}"
+            )
+            break
+
+elif not draft:
 
                 st.session_state.activity.append(
                     "Building evidence-based fallback"

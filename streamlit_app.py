@@ -445,8 +445,9 @@ async def research(query):
         }
 
     try:
-        # Force news/current-event searches to focus on the current day.
-        current_date = time.strftime("%B %d, %Y")
+        from datetime import date
+
+        current_date = date.today().isoformat()
 
         research_query = f"""
 Find exactly 5 REAL, specific artificial-intelligence news developments
@@ -458,19 +459,19 @@ User request:
 {query}
 
 STRICT REQUIREMENTS:
-- Search specifically for AI news, not general technology or business news.
-- Prefer developments actually reported on {current_date}.
-- If there are not enough developments from today, use the most recent
+- Search specifically for AI news.
+- Prefer developments actually reported today.
+- If there are not enough developments today, use the most recent
   credible AI news from the previous 1-3 days.
 - Each development must be a specific event, announcement, launch,
   funding deal, research release, regulation decision, acquisition,
   partnership, or major company action.
 - Do NOT return generic AI trends.
-- Do NOT return predictions or broad industry analysis.
+- Do NOT return predictions.
 - Do NOT invent developments.
-- Do NOT use horoscope, stock-market, insurance, finance, or unrelated
-  business articles unless the article itself reports a specific AI event.
-- Prefer primary sources and reputable technology/news publications.
+- Ignore horoscope, sports, weather, stock-market, insurance,
+  admissions, travel, and unrelated business articles.
+- Prefer primary sources and reputable news publications.
 - Find multiple DISTINCT developments.
 """
 
@@ -478,74 +479,73 @@ STRICT REQUIREMENTS:
             client.search,
             query=research_query,
             search_depth="advanced",
-            topic="news",
             max_results=8,
             include_answer=True,
         )
 
         sources = []
 
-for source in result.get("results", []):
-    title = str(source.get("title", "")).lower()
-    content = str(source.get("content", "")).lower()
-    url = str(source.get("url", "")).lower()
+        for source in result.get("results", []):
+            title = str(source.get("title", "")).lower()
+            content = str(source.get("content", "")).lower()
+            url = str(source.get("url", "")).lower()
 
-    combined = f"{title} {content} {url}"
+            combined = f"{title} {content} {url}"
 
-    # Reject obvious non-AI results.
-    irrelevant = [
-        "horoscope",
-        "stock market",
-        "weather",
-        "sports",
-        "flight",
-        "admissions",
-        "insurance",
-        "real estate",
-        "celebrity",
-        "recipe",
-    ]
+            irrelevant = [
+                "horoscope",
+                "stock market",
+                "weather",
+                "sports",
+                "flight",
+                "admissions",
+                "insurance",
+                "real estate",
+                "celebrity",
+                "recipe",
+            ]
 
-    if any(word in combined for word in irrelevant):
-        continue
+            if any(word in combined for word in irrelevant):
+                continue
 
-    # Keep results that actually contain AI-related evidence.
-    ai_terms = [
-        "artificial intelligence",
-        " ai ",
-        "machine learning",
-        "generative ai",
-        "ai model",
-        "ai system",
-        "ai policy",
-        "ai regulation",
-        "ai service",
-        "ai company",
-        "openai",
-        "google deepmind",
-        "anthropic",
-        "meta ai",
-        "microsoft ai",
-        "apple intelligence",
-        "nvidia",
-    ]
+            ai_terms = [
+                "artificial intelligence",
+                " ai ",
+                "machine learning",
+                "generative ai",
+                "ai model",
+                "ai system",
+                "ai policy",
+                "ai regulation",
+                "ai service",
+                "ai company",
+                "openai",
+                "google deepmind",
+                "anthropic",
+                "meta ai",
+                "microsoft ai",
+                "apple intelligence",
+                "nvidia",
+            ]
 
-    if any(term in combined for term in ai_terms):
-        sources.append(source)
+            if any(term in combined for term in ai_terms):
+                sources.append(source)
 
-return {
-    "answer": result.get("answer", ""),
-    "sources": sources[:6],
-    "error": "",
-}
+        return {
+            "answer": result.get("answer", ""),
+            "sources": sources[:6],
+            "error": "",
+        }
 
     except Exception as exc:
+        error_message = f"{type(exc).__name__}: {exc}"
+
         return {
             "answer": "",
             "sources": [],
-            "error": f"{type(exc).__name__}: {exc}",
+            "error": error_message,
         }
-
+            
 def should_research(query):
     q = query.lower()
 

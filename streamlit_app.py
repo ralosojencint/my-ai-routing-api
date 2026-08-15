@@ -222,7 +222,7 @@ async def groq_text(prompt, images=None):
         return answer
 
     except Exception as exc:
-        return f"⚠️ GROQ API ERROR: {exc}"
+        return "⚠️ NEXUS is temporarily unable to complete the request. Please try again in a few minutes."
         
 # -------------------- File handling --------------------
 

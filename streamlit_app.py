@@ -154,11 +154,12 @@ async def groq_text(prompt, images=None):
     try:
         client = groq_client()
 
-                if client is None:
+        if client is None:
             return "⚠️ Groq client could not be initialized."
 
         # Keep fallback requests compact enough for Groq's TPM limit.
         prompt = prompt[:6000]
+
         user_content = [
             {
                 "type": "text",
@@ -169,6 +170,7 @@ async def groq_text(prompt, images=None):
         for _, image in images or []:
             buffer = io.BytesIO()
             image.convert("RGB").save(buffer, format="JPEG")
+
             image_data = base64.b64encode(
                 buffer.getvalue()
             ).decode("utf-8")
@@ -221,9 +223,13 @@ async def groq_text(prompt, images=None):
 
         return answer
 
-    except Exception as exc:
-        return "⚠️ NEXUS is temporarily unable to complete the request. Please try again in a few minutes."
-        
+    except Exception:
+        return (
+            "⚠️ NEXUS is temporarily unable to complete "
+            "the request. Please try again in a few minutes."
+        )
+
+
 # -------------------- File handling --------------------
 
 def clean_text(text):

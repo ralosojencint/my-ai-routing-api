@@ -592,22 +592,16 @@ TAVILY SOURCES:
 Produce the final answer now.
 """
 
-        draft = await gemini_text(
-    synthesis_prompt
-)
+            draft = clean_ai_response(draft)
 
-draft = clean_ai_response(draft)
+    if not draft or len(draft.strip()) < 80:
+        draft = research_result.get("answer", "").strip()
 
-if not draft or len(draft.strip()) < 80:
-    draft = research_result.get("answer", "").strip()
-
-if not draft:
-    draft = (
-        "⚠️ NEXUS found recent research, but the final synthesis "
-        "could not be completed. Please try again."
-    )
-
-    draft = clean_ai_response(draft)
+    if not draft:
+        draft = (
+            "⚠️ NEXUS found recent research, but the final synthesis "
+            "could not be completed. Please try again."
+        )
 
     st.session_state.activity.extend([
         "Result checked",

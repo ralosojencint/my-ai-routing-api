@@ -332,6 +332,26 @@ def retrieve_documents(query, limit=8):
     return [doc for _, doc in scored[:limit]]
 
 # -------------------- Agents --------------------
+
+def clean_ai_response(text):
+    if not text:
+        return ""
+
+    text = re.sub(
+        r"<think>.*?</think>",
+        "",
+        text,
+        flags=re.DOTALL | re.IGNORECASE
+    )
+
+    text = re.sub(
+        r"<thinking>.*?</thinking>",
+        "",
+        text,
+        flags=re.DOTALL | re.IGNORECASE
+    )
+
+    return text.strip()
  
 async def gemini_text(prompt, images=None):
     client = gemini_client()

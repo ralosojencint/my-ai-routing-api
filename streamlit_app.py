@@ -444,36 +444,58 @@ async def research(query):
             "error": "Tavily client is not available. Check TAVILY_API_KEY."
         }
 
-    from datetime import date
-
-    current_date = date.today().isoformat()
-
-    queries = [
-        f"AI artificial intelligence news today {current_date}",
-        f"AI company product model announcement today {current_date}",
-        f"AI research funding regulation partnership today {current_date}",
-    ]
-
     try:
-        results = await asyncio.gather(
-            *[
-                asyncio.to_thread(
+        from datetime import date
+
+        current_date = date.today().isoformat()
+
+        # Search specifically for CURRENT AI NEWS.
+        # Multiple focused searches give Tavily a better chance
+        # of finding five real and distinct developments.
+        search_queries = [
+            f"artificial intelligence AI news {current_date}",
+            f"AI model launch company announcement {current_date}",
+            f"AI research technology news {current_date}",
+            f"AI funding partnership regulation news {current_date}",
+        ]
+
+        all_sources = []
+
+        for search_query in search_queries:
+            try:
+                result = await asyncio.to_thread(
                     client.search,
-                    query=q,
+                    query=search_query,
                     search_depth="advanced",
+                    topic="news",
+                    time_range="day",
                     max_results=6,
-                    include_answer=True,
+                    include_answer=False,
                 )
-                for q in queries
-            ],
-            return_exceptions=True,
-        )
 
-        sources = []
+                for source in result.get("results", []):
+                    all_sources.append(source)
+
+            except Exception:
+                continue
+
+        # Remove duplicate URLs.
+        unique_sources = []
         seen_urls = set()
-        seen_titles = set()
 
-        irrelevant = [
+        for source in all_sources:
+            url = str(
+                source.get("url", "")
+            ).strip()
+
+            if not url or url in seen_urls:
+                continue
+
+            seen_urls.add(url)
+            unique_sources.append(source)
+
+        # Reject obviously unrelated material.
+        irrelevant_terms = [
             "horoscope",
             "stock market",
             "weather",
@@ -484,113 +506,83 @@ async def research(query):
             "real estate",
             "celebrity",
             "recipe",
-            "jobs",
             "travel",
         ]
 
+        # Require actual AI-related language.
         ai_terms = [
             "artificial intelligence",
+            "artificial-intelligence",
             " ai ",
             "machine learning",
             "generative ai",
             "ai model",
             "ai system",
-            "ai policy",
-            "ai regulation",
-            "ai service",
-            "ai company",
-            "ai research",
             "ai agent",
+            "ai research",
+            "ai chip",
+            "ai hardware",
+            "ai regulation",
+            "ai policy",
+            "ai safety",
+            "ai startup",
             "openai",
-            "google deepmind",
             "anthropic",
-            "meta ai",
-            "microsoft ai",
-            "apple intelligence",
-            "nvidia",
+            "google deepmind",
             "gemini",
-            "claude",
-            "chatgpt",
+            "meta ai",
+            "microsoft",
+            "nvidia",
+            "mistral",
+            "open source ai",
+            "robotics",
         ]
 
-        answers = []
+        filtered_sources = []
 
-        for result in results:
-            if isinstance(result, Exception):
+        for source in unique_sources:
+            title = str(
+                source.get("title", "")
+            ).strip()
+
+            content = str(
+                source.get("content", "")
+            ).strip()
+
+            published = str(
+                source.get("published_date", "")
+            ).strip()
+
+            combined = (
+                " "
+                + title.lower()
+                + " "
+                + content.lower()
+                + " "
+                + published.lower()
+                + " "
+            )
+
+            if any(
+                term in combined
+                for term in irrelevant_terms
+            ):
                 continue
 
-            if not isinstance(result, dict):
+            if not any(
+                term in combined
+                for term in ai_terms
+            ):
                 continue
 
-            answer = str(result.get("answer", "")).strip()
+            filtered_sources.append(source)
 
-            if answer:
-                answers.append(answer[:1200])
-
-            for source in result.get("results", []):
-                title = str(
-                    source.get("title", "")
-                ).strip()
-
-                content = str(
-                    source.get("content", "")
-                ).strip()
-
-                url = str(
-                    source.get("url", "")
-                ).strip()
-
-                combined = (
-                    title.lower()
-                    + " "
-                    + content.lower()
-                    + " "
-                    + url.lower()
-                )
-
-                if not title or not content:
-                    continue
-
-                if any(word in combined for word in irrelevant):
-                    continue
-
-                if not any(term in combined for term in ai_terms):
-                    continue
-
-                url_key = url.lower().rstrip("/")
-                title_key = re.sub(
-                    r"[^a-z0-9]+",
-                    " ",
-                    title.lower()
-                ).strip()
-
-                if url_key and url_key in seen_urls:
-                    continue
-
-                if title_key and title_key in seen_titles:
-                    continue
-
-                if url_key:
-                    seen_urls.add(url_key)
-
-                if title_key:
-                    seen_titles.add(title_key)
-
-                source_copy = dict(source)
-
-                source_copy["title"] = title
-                source_copy["content"] = content[:1400]
-                source_copy["url"] = url
-
-                sources.append(source_copy)
-
-        sources = sources[:12]
-
-        research_answer = "\n\n".join(answers[:3])
+        # Keep the strongest current-news evidence.
+        filtered_sources = filtered_sources[:10]
 
         return {
-            "answer": research_answer,
-            "sources": sources,
+            "answer": "",
+            "sources": filtered_sources,
             "error": "",
         }
 
@@ -600,7 +592,7 @@ async def research(query):
             "sources": [],
             "error": f"{type(exc).__name__}: {exc}",
         }
-      
+    
 def should_research(query):
     q = query.lower()
 

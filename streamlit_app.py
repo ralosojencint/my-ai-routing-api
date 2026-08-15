@@ -738,156 +738,139 @@ async def research(query):
             key=lambda item: item[0],
             reverse=True
         )
-
-                # -------------------- Strong event deduplication --------------------
+        # -------------------- Strong event deduplication --------------------
 
         final_sources = []
         seen_title_tokens = []
         seen_event_tokens = set()
         seen_urls = set()
 
-for _, source in ranked_sources:
+        for _, source in ranked_sources:
 
-    title = str(
-        source.get("title", "")
-    ).strip()
+            title = str(
+                source.get("title", "")
+            ).strip()
 
-    content = clean_text(
-        source.get("content", "")
-    )
-
-    url = str(
-        source.get("url", "")
-    ).strip()
-
-    if not title:
-        continue
-
-    # Normalize URL
-    normalized_url = url.rstrip("/").lower()
-
-    if normalized_url and normalized_url in seen_urls:
-        continue
-
-    # -------------------- Title similarity --------------------
-
-    title_tokens = set(
-        re.findall(
-            r"[a-zA-Z0-9]+",
-            title.lower()
-        )
-    )
-
-    if not title_tokens:
-        continue
-
-    duplicate = False
-
-    for previous_tokens in seen_title_tokens:
-
-        overlap = len(
-            title_tokens & previous_tokens
-        )
-
-        similarity = (
-            overlap
-            / max(
-                len(title_tokens),
-                len(previous_tokens),
-                1
+            content = clean_text(
+                source.get("content", "")
             )
-        )
 
-        # Very similar headlines = same story
-        if similarity >= 0.55:
-            duplicate = True
-            break
+            url = str(
+                source.get("url", "")
+            ).strip()
 
-    if duplicate:
-        continue
+            if not title:
+                continue
 
-    # -------------------- Event similarity --------------------
-    # Compare important words from title + article content.
-    # This catches cases where different websites use
-    # different headlines for the SAME event.
+            normalized_url = url.rstrip("/").lower()
 
-    combined_text = (
-        title + " " + content[:1200]
-    ).lower()
+            if normalized_url and normalized_url in seen_urls:
+                continue
 
-    event_tokens = set(
-        re.findall(
-            r"[a-zA-Z0-9]+",
-            combined_text
-        )
-    )
-
-    # Remove generic words that make unrelated AI stories
-    # look artificially similar.
-    generic_words = {
-        "ai",
-        "artificial",
-        "intelligence",
-        "technology",
-        "new",
-        "latest",
-        "today",
-        "news",
-        "company",
-        "industry",
-        "system",
-        "report",
-        "reports",
-        "says",
-        "said",
-        "will",
-        "could",
-        "may",
-        "according",
-    }
-
-    event_tokens -= generic_words
-
-    # Compare the important event words with previous stories.
-    for previous_event_tokens in seen_event_tokens:
-
-        if not event_tokens or not previous_event_tokens:
-            continue
-
-        overlap = len(
-            event_tokens & previous_event_tokens
-        )
-
-        similarity = (
-            overlap
-            / max(
-                len(event_tokens),
-                len(previous_event_tokens),
-                1
+            title_tokens = set(
+                re.findall(
+                    r"[a-zA-Z0-9]+",
+                    title.lower()
+                )
             )
-        )
 
-        # Same event even when headlines differ.
-        if similarity >= 0.45:
-            duplicate = True
-            break
+            if not title_tokens:
+                continue
 
-    if duplicate:
-        continue
+            duplicate = False
 
-    # -------------------- Keep unique story --------------------
+            for previous_tokens in seen_title_tokens:
 
-    final_sources.append(source)
+                overlap = len(
+                    title_tokens & previous_tokens
+                )
 
-    seen_title_tokens.append(title_tokens)
-    seen_event_tokens.append(event_tokens)
+                similarity = (
+                    overlap
+                    / max(
+                        len(title_tokens),
+                        len(previous_tokens),
+                        1
+                    )
+                )
 
-    if normalized_url:
-        seen_urls.add(normalized_url)
+                if similarity >= 0.55:
+                    duplicate = True
+                    break
 
-    # Keep enough evidence for synthesis.
-    if len(final_sources) >= 15:
-        break
+            if duplicate:
+                continue
+
+            combined_text = (
+                title + " " + content[:1200]
+            ).lower()
+
+            event_tokens = set(
+                re.findall(
+                    r"[a-zA-Z0-9]+",
+                    combined_text
+                )
+            )
+
+            generic_words = {
+                "ai",
+                "artificial",
+                "intelligence",
+                "technology",
+                "new",
+                "latest",
+                "today",
+                "news",
+                "company",
+                "industry",
+                "system",
+                "report",
+                "reports",
+                "says",
+                "said",
+                "will",
+                "could",
+                "may",
+                "according",
+            }
+
+            event_tokens -= generic_words
+
+            for previous_event_tokens in seen_event_tokens:
+
+                if not event_tokens or not previous_event_tokens:
+                    continue
+
+                overlap = len(
+                    event_tokens & previous_event_tokens
+                )
+
+                similarity = (
+                    overlap
+                    / max(
+                        len(event_tokens),
+                        len(previous_event_tokens),
+                        1
+                    )
+                )
+
+                if similarity >= 0.45:
+                    duplicate = True
+                    break
+
+            if duplicate:
+                continue
+
+            final_sources.append(source)
+
+            seen_title_tokens.append(title_tokens)
+            seen_event_tokens.append(event_tokens)
+
+            if normalized_url:
+                seen_urls.add(normalized_url)
+
+            if len(final_sources) >= 15:
+                break
 
         return {
             "answer": "",

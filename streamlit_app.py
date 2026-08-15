@@ -52,8 +52,7 @@ GEMINI_API_KEY = get_secret("GEMINI_API_KEY")
 TAVILY_API_KEY = get_secret("TAVILY_API_KEY")
 GROQ_API_KEY = get_secret("GROQ_API_KEY")
 
-MODEL = "gemini-3.5-flash"
-
+MODEL = "invalid-test-model"
 # -------------------- Persistent memory --------------------
 
 DB_PATH = Path("nexus_memory.db")

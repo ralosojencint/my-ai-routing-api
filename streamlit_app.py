@@ -263,9 +263,14 @@ def read_uploaded_file(uploaded):
         return uploaded.getvalue().decode("utf-8", errors="replace"), None
 
     if ext == ".csv":
-        df = pd.read_csv(uploaded)
-        st.session_state.datasets.append({"name": name, "data": df})
-        return df.head(100).to_csv(index=False), None
+    df = pd.read_csv(uploaded)
+
+    st.session_state.datasets.append({
+        "name": name,
+        "data": df
+    })
+
+    return df.head(100).to_csv(index=False), None
 
     if ext in {".png", ".jpg", ".jpeg", ".webp"}:
         # Images are handled directly by Gemini when attached to a prompt.

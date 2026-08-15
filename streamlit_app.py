@@ -521,7 +521,6 @@ RECENT PERSISTENT MEMORY:
     )
 
     draft = ""
-
     research_result = {
         "answer": "",
         "sources": [],
@@ -557,25 +556,24 @@ You are NEXUS performing research synthesis.
 
 Answer the user's request using the Tavily research evidence below.
 
-IMPORTANT RULES FOR CURRENT / LATEST / RECENT QUESTIONS:
+IMPORTANT RULES:
 
 - Prioritize the newest information in the provided sources.
 - Pay close attention to publication dates and event dates.
 - Do not present old information as current.
-- If a source is from an older year, clearly identify it as historical/background information.
-- Prefer recent primary sources and reputable news sources when available.
+- If a source is from an older year, identify it as historical/background information.
+- Prefer recent primary sources and reputable news sources.
 - Do not use your own prior knowledge to override the provided research.
 - Do not invent facts, dates, sources, URLs, citations, or publication details.
-- Do not create a "Sources" section in your answer.
+- Do not create a Sources section.
 - Do not output source URLs or markdown links.
-- The NEXUS interface will display verified Tavily sources separately.
-- If the provided research does not contain enough recent information, say so instead of guessing.
-- Answer the user's actual question directly before giving background context.
+- The NEXUS interface displays verified Tavily sources separately.
+- If the research is insufficient, say so instead of guessing.
+- Answer the user's actual question directly.
 - Limit the final answer to 5 key developments.
 - Use short paragraphs or bullets.
 - Finish every bullet completely.
-- Do not start a new section if you cannot finish it.
-- Never end the response with an incomplete bullet or sentence.
+- Never end with an incomplete sentence or bullet.
 
 USER REQUEST:
 
@@ -592,7 +590,11 @@ TAVILY SOURCES:
 Produce the final answer now.
 """
 
-            draft = clean_ai_response(draft)
+        draft = await gemini_text(
+            synthesis_prompt
+        )
+
+    draft = clean_ai_response(draft)
 
     if not draft or len(draft.strip()) < 80:
         draft = research_result.get("answer", "").strip()
@@ -617,6 +619,13 @@ Produce the final answer now.
         "sources": research_result.get("sources", []),
         "latency": time.perf_counter() - started,
     }
+
+    
+
+
+    
+
+            
 
 
 # -------------------- Styling --------------------

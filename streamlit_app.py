@@ -522,6 +522,14 @@ INITIAL ANSWER:
 """
         )
 
+        # Remove any visible model reasoning from the final answer.
+    draft = re.sub(
+        r"<think>.*?</think>",
+        "",
+        draft or "",
+        flags=re.DOTALL | re.IGNORECASE
+    ).strip()
+
     st.session_state.activity.extend([
         "Result checked",
         "Memory updated",

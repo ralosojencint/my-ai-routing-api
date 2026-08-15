@@ -400,15 +400,44 @@ async def gemini_text(prompt, images=None):
 
             answer = clean_ai_response(response.text or "I received no text response.")
             return answer
-        except Exception as exc:
+                except Exception as exc:
             error_text = str(exc).lower()
 
-                        if (
+            if (
                 "429" in error_text
                 or "resource_exhausted" in error_text
                 or "quota" in error_text
                 or "rate limit" in error_text
             ):
+                if attempt < max_retries:
+                    wait_time = 5 * (attempt + 1)
+                    await asyncio.sleep(wait_time)
+                    continue
+
+                return await groq_text(prompt, images=images)
+
+            # Gemini model unavailable/not found → use Groq fallback immediately
+            if (
+                "404" in error_text
+                or "not_found" in error_text
+                or "not found" in error_text
+            ):
+                return await groq_text(prompt, images=images)
+
+            if (
+                "503" in error_text
+                or "service unavailable" in error_text
+                or "unavailable" in error_text
+            ):
+                if attempt < max_retries:
+                    wait_time = 3 * (attempt + 1)
+                    await asyncio.sleep(wait_time)
+                    continue
+
+                return (
+                    "⚠️ **Gemini is temporarily unavailable.**\n\n"
+                    "Please try your message again in a moment."
+                )
                 if attempt < max_retries:
                     wait_time = 5 * (attempt + 1)
                     await asyncio.sleep(wait_time)

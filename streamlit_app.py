@@ -507,6 +507,11 @@ IMPORTANT RULES FOR CURRENT / LATEST / RECENT QUESTIONS:
 - Do not output source URLs or markdown links. The NEXUS interface will display the verified Tavily sources separately.
 - If the provided research does not contain enough recent information, say so instead of guessing.
 - Answer the user's actual question directly before giving background context.
+- Limit the final answer to 5 key developments.
+- Use short paragraphs or bullets.
+- Finish every bullet completely.
+- Do not start a new section if you cannot finish it.
+- Never end the response with an incomplete bullet or sentence.
 USER REQUEST:
 {query}
 

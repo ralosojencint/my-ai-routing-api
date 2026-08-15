@@ -392,8 +392,13 @@ async def gemini_text(prompt, images=None):
     return "⚠️ NEXUS couldn't complete the request. Please try again."
 async def research(query):
     client = tavily_client()
+
     if client is None:
-        return {"answer": "", "sources": []}
+        return {
+            "answer": "",
+            "sources": [],
+            "error": "Tavily client is not available. Check TAVILY_API_KEY."
+        }
 
     try:
         result = await asyncio.to_thread(
@@ -403,12 +408,21 @@ async def research(query):
             max_results=6,
             include_answer=True,
         )
+
         return {
             "answer": result.get("answer", ""),
             "sources": result.get("results", []),
+            "error": "",
         }
+
     except Exception as exc:
-        return {"answer": f"Research error: {exc}", "sources": []}
+        error_message = f"{type(exc).__name__}: {exc}"
+
+        return {
+            "answer": "",
+            "sources": [],
+            "error": error_message,
+        }
 
 def should_research(query):
     q = query.lower()

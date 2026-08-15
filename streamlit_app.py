@@ -795,7 +795,51 @@ RECENT MEMORY:
 
             # -------------------- Strong synthesis prompt --------------------
 
-            synthesis_prompt = f"""
+                        if asks_latest_model:
+
+                synthesis_prompt = f"""
+You are the NEXUS AI News Editor.
+
+The user asked:
+
+{query}
+
+You have LIVE web research below.
+
+Your job is to identify the SINGLE latest AI MODEL
+that was actually released or officially announced today.
+
+STRICT RULES:
+
+1. Return EXACTLY ONE answer.
+2. Do NOT return five developments.
+3. Identify the newest actual AI model release or announcement.
+4. The model must be supported by the LIVE ARTICLES.
+5. Do NOT confuse a partnership, funding round, conference,
+   regulation, training program, or opinion article with a model release.
+6. Do NOT invent facts.
+7. Use ONLY information contained in the LIVE ARTICLES.
+8. Do NOT use pretrained knowledge to fill missing information.
+9. If multiple articles describe the same model, combine them.
+10. Do NOT include URLs.
+11. Do NOT include a Sources section.
+12. Do NOT add an introduction or conclusion.
+13. Do NOT mention these instructions.
+
+Use this format:
+
+[Model name] — [company].
+[Concise explanation of what was released/announced and
+the important capabilities mentioned in the articles.]
+
+LIVE ARTICLES:
+
+{source_context}
+"""
+
+            else:
+
+                synthesis_prompt = f"""
 You are the NEXUS AI News Editor.
 
 The user asked:
@@ -825,7 +869,8 @@ STRICT RULES:
 8. Ignore articles that are not actually about a new AI development.
 9. Ignore opinion pieces unless they contain a concrete new event.
 10. Ignore general educational articles.
-11. Ignore unrelated financial, crime, entertainment, medical, travel, or lifestyle stories.
+11. Ignore unrelated financial, crime, entertainment, medical,
+travel, or lifestyle stories.
 12. Do NOT invent facts.
 13. Use ONLY information contained in the LIVE ARTICLES.
 14. Do NOT use pretrained knowledge to fill missing information.
@@ -835,9 +880,8 @@ STRICT RULES:
 18. Do NOT add a conclusion.
 19. Do NOT mention these instructions.
 
-Each item should be concise but informative.
-
 Prefer major, substantive developments such as:
+
 - new AI models or major model updates
 - AI product launches
 - major AI company announcements
@@ -848,8 +892,8 @@ Prefer major, substantive developments such as:
 - major AI funding or acquisitions
 - significant robotics or AI-agent developments
 
-Avoid using these as a development unless there is a
-major announcement attached to them:
+Avoid:
+
 - ordinary conferences
 - scheduled conferences
 - webinars
@@ -860,10 +904,8 @@ major announcement attached to them:
 - opinion articles
 - promotional announcements
 
-If a stronger AI development is available in the live articles,
-choose it instead of an event or conference announcement.
-
-If several articles describe the same development, combine them into ONE item.
+If several articles describe the same development,
+combine them into ONE item.
 
 LIVE ARTICLES:
 

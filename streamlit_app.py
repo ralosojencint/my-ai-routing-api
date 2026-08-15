@@ -256,19 +256,27 @@ def read_uploaded_file(uploaded):
         if PdfReader is None:
             return "", "PDF reader is unavailable."
         reader = PdfReader(uploaded)
-        text = "\n".join((page.extract_text() or "") for page in reader.pages)
+        text = "\n".join(
+            (page.extract_text() or "")
+            for page in reader.pages
+        )
         return text, None
 
     if ext in {".txt", ".md"}:
-        return uploaded.getvalue().decode("utf-8", errors="replace"), None
+        return uploaded.getvalue().decode(
+            "utf-8",
+            errors="replace"
+        ), None
 
-            if ext == ".csv":
+    if ext == ".csv":
         df = pd.read_csv(uploaded)
-        st.session_state.datasets.append({"name": name, "data": df})
+        st.session_state.datasets.append({
+            "name": name,
+            "data": df
+        })
         return df.head(100).to_csv(index=False), None
 
     if ext in {".png", ".jpg", ".jpeg", ".webp"}:
-        # Images are handled directly by Gemini when attached to a prompt.
         return "", None
 
     return "", f"Unsupported file type: {ext}"

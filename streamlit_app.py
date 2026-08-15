@@ -446,6 +446,22 @@ async def research(query):
 
 def should_research(query):
     q = query.lower()
+
+    return bool(TAVILY_API_KEY) and any(
+        phrase in q for phrase in [
+            "latest",
+            "today",
+            "current",
+            "breaking news",
+            "recent news",
+            "what happened today",
+            "what happened in ai",
+            "news about",
+            "latest news",
+            "2026 news"
+        ]
+    )
+    q = query.lower()
     return bool(TAVILY_API_KEY) and any(
         word in q for word in
         ["latest", "today", "current", "news", "recent", "research", "2026"]

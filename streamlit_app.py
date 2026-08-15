@@ -698,71 +698,88 @@ RECENT MEMORY:
 
     # -------------------- Research synthesis --------------------
 
-    if research_result["answer"] or research_result["sources"]:
+    if research_result["sources"]:
 
         st.session_state.activity.append("Research synthesis")
 
-        # Keep the synthesis request SMALL.
-        # This prevents Groq's TPM limit from being exceeded.
         source_context_parts = []
 
-        for source in research_result["sources"][:5]:
-            title = str(source.get("title", "Untitled"))
-            content = str(source.get("content", ""))
+        for i, source in enumerate(
+            research_result["sources"][:8],
+            start=1
+        ):
+            title = str(
+                source.get("title", "Untitled")
+            ).strip()
 
-            source_context_parts.append(
-                f"TITLE: {title}\n"
-                f"CONTENT: {content[:1400]}"
+            content = clean_text(
+                source.get("content", "")
             )
 
-        source_context = "\n\n".join(source_context_parts)
+            url = str(
+                source.get("url", "")
+            ).strip()
 
-        research_summary = str(
-            research_result.get("answer", "")
-        )[:1800]
+            source_context_parts.append(
+                "ARTICLE " + str(i) + "\n"
+                "TITLE: " + title + "\n"
+                "CONTENT: " + content[:1400] + "\n"
+                "URL: " + url
+            )
+
+        source_context = "\n\n".join(
+            source_context_parts
+        )
 
         synthesis_prompt = (
-    "You are NEXUS, a strict AI news editor.\n\n"
-    "TODAY'S DATE: " + __import__("datetime").date.today().isoformat() + "\n\n"
-    "USER REQUEST:\n" + query + "\n\n"
-    "IMPORTANT: The research evidence below was retrieved LIVE by NEXUS.\n"
-"Treat that evidence as your source of current information.\n"
-"DO NOT say you lack internet access.\n"
-"DO NOT answer from your pretrained knowledge.\n"
-"DO NOT give generic AI trends.\n"
-"Extract concrete events directly from the retrieved articles.\n\n"
-    "1. Return EXACTLY 5 developments.\n"
-    "2. Every development MUST be a specific real event.\n"
-    "3. Name the company, organization, person, product, model, "
-    "research project, funding round, partnership, or regulation involved.\n"
-    "4. State WHAT actually happened.\n"
-    "5. Do NOT write generic AI trends.\n"
-    "6. Do NOT write predictions.\n"
-    "7. Do NOT invent facts.\n"
-    "8. Do NOT combine unrelated articles into one event.\n"
-    "9. If multiple articles describe the same event, count it only once.\n"
-    "10. Prefer the newest credible events.\n"
-    "11. Each item must be DISTINCT.\n"
-    "12. Keep each item to 1-2 sentences.\n"
-    "13. Number the items 1 through 5.\n"
-    "14. Do NOT include a Sources section.\n"
-    "15. Do NOT include URLs.\n\n"
-    "BAD: AI adoption is accelerating.\n"
-    "GOOD: Company X announced a specific AI product or event.\n\n"
-    "LIVE RESEARCH EVIDENCE:\n"
-+ source_context
-+ "\n\n"
-    "RESEARCH SUMMARY:\n" + research_summary + "\n\n"
-    "FINAL ANSWER:\n"
-)
+            "You are NEXUS News Editor.\n\n"
+            "The following articles were retrieved LIVE by NEXUS "
+            "from a web research service.\n\n"
+            "You MUST use these articles as your ONLY source "
+            "of information.\n\n"
+            "Do NOT use your pretrained knowledge to replace "
+            "the articles.\n"
+            "Do NOT say you lack internet access.\n"
+            "Do NOT discuss old AI developments unless they are "
+            "actually reported by the retrieved articles.\n"
+            "Do NOT create generic AI trends.\n"
+            "Do NOT invent facts.\n\n"
+            "USER REQUEST:\n"
+            + query
+            + "\n\n"
+            "TASK:\n"
+            "Extract exactly 5 DISTINCT concrete AI news events "
+            "from the retrieved articles.\n\n"
+            "Each item MUST:\n"
+            "- identify the company, organization, person, "
+            "product, model, research project, or regulator involved\n"
+            "- describe the specific event that happened\n"
+            "- be based directly on the retrieved evidence\n"
+            "- be different from the other four items\n\n"
+            "If several articles describe the same event, "
+            "count that event only once.\n\n"
+            "OUTPUT FORMAT:\n"
+            "1. [Specific event]\n"
+            "2. [Specific event]\n"
+            "3. [Specific event]\n"
+            "4. [Specific event]\n"
+            "5. [Specific event]\n\n"
+            "Return ONLY the five numbered items.\n"
+            "No introduction.\n"
+            "No Sources section.\n"
+            "No URLs.\n\n"
+            "LIVE ARTICLES:\n"
+            + source_context
+        )
 
         synthesized = await gemini_text(
             synthesis_prompt
         )
 
-        synthesized = clean_ai_response(synthesized)
+        synthesized = clean_ai_response(
+            synthesized
+        )
 
-        # Only replace the original answer if synthesis succeeded.
         if synthesized and not synthesized.startswith("⚠️"):
             draft = synthesized
 

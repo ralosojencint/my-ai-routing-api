@@ -739,8 +739,11 @@ async def research(query):
             reverse=True
         )
 
-        # -------------------- Deduplicate similar headlines --------------------
-
+        return {
+    "answer": "",
+    "sources": final_sources,
+    "error": "",
+}
         final_sources = []
         seen_title_tokens = []
 

@@ -452,15 +452,15 @@ async def research(query):
         # -------------------- Focused AI news searches --------------------
 
         search_queries = [
-    f"artificial intelligence AI news today {current_date}",
-    f"new AI model released announced today {current_date}",
-    f"OpenAI Anthropic Google Meta Microsoft AI news {current_date}",
-    f"Nvidia AI chips infrastructure data centers news {current_date}",
-    f"AI startup funding partnership deployment announcement {current_date}",
-    f"AI research breakthrough paper today {current_date}",
-    f"AI regulation government policy announcement {current_date}",
-    f"robotics autonomous AI agent announcement {current_date}",
-]
+            f"AI artificial intelligence breaking news {current_date}",
+            f"AI model launch release announced {current_date}",
+            f"OpenAI Anthropic Google Gemini Meta Microsoft AI announcement {current_date}",
+            f"NVIDIA AI chips data centers infrastructure {current_date}",
+            f"AI startup funding acquisition partnership {current_date}",
+            f"AI research technology breakthrough {current_date}",
+            f"AI regulation government policy {current_date}",
+            f"robotics AI agents autonomous systems {current_date}",
+        ]
 
         all_sources = []
 
@@ -472,7 +472,7 @@ async def research(query):
                     search_depth="advanced",
                     topic="news",
                     time_range="day",
-                    max_results=6,
+                    max_results=8,
                     include_answer=False,
                 )
 
@@ -488,6 +488,7 @@ async def research(query):
         seen_urls = set()
 
         for source in all_sources:
+
             url = str(
                 source.get("url", "")
             ).strip()
@@ -503,7 +504,46 @@ async def research(query):
             seen_urls.add(normalized_url)
             unique_sources.append(source)
 
-        # -------------------- Filter obvious non-AI stories --------------------
+        # -------------------- AI relevance filtering --------------------
+
+        ai_terms = [
+            "artificial intelligence",
+            "artificial-intelligence",
+            "machine learning",
+            "generative ai",
+            "ai model",
+            "ai system",
+            "ai agent",
+            "ai research",
+            "ai chip",
+            "ai hardware",
+            "ai infrastructure",
+            "ai regulation",
+            "ai policy",
+            "ai safety",
+            "ai startup",
+            "ai coding",
+            "ai software",
+            "openai",
+            "anthropic",
+            "google deepmind",
+            "gemini",
+            "meta ai",
+            "microsoft",
+            "nvidia",
+            "mistral",
+            "z.ai",
+            "glm",
+            "robotics",
+            "large language model",
+            "llm",
+            "foundation model",
+            "open-weight",
+            "open source model",
+            "autonomous",
+        ]
+
+        # -------------------- Reject obvious noise --------------------
 
         irrelevant_terms = [
             "horoscope",
@@ -521,9 +561,11 @@ async def research(query):
             "petvivo",
             "quarterly earnings",
             "fiscal results",
-            "stock market",
             "share price",
-            "investor",
+            "stock market",
+            "stock analysis",
+            "investor outlook",
+            "price target",
             "murder",
             "arrest",
             "crime",
@@ -532,37 +574,18 @@ async def research(query):
             "fbi",
         ]
 
-        ai_terms = [
-            "artificial intelligence",
-            "artificial-intelligence",
-            "machine learning",
-            "generative ai",
-            "ai model",
-            "ai system",
-            "ai agent",
-            "ai research",
-            "ai chip",
-            "ai hardware",
-            "ai regulation",
-            "ai policy",
-            "ai safety",
-            "ai startup",
-            "openai",
-            "anthropic",
-            "google deepmind",
-            "gemini",
-            "meta ai",
-            "microsoft",
-            "nvidia",
-            "mistral",
-            "z.ai",
-            "glm",
-            "robotics",
-            "large language model",
-            "llm",
-            "foundation model",
-            "open-weight",
-            "open source model",
+        # These are usually commentary/promotional pages rather
+        # than primary AI developments.
+        weak_source_terms = [
+            "opinion",
+            "commentary",
+            "editorial",
+            "why i created",
+            "top 100",
+            "weekly horoscope",
+            "webinar",
+            "conference registration",
+            "conference announced",
         ]
 
         filtered_sources = []
@@ -582,44 +605,127 @@ async def research(query):
             ).strip()
 
             combined = (
-                " "
-                + title.lower()
+                title.lower()
                 + " "
                 + content.lower()
                 + " "
                 + published.lower()
-                + " "
             )
 
-            # Reject obvious non-AI stories.
-            if any(
-                term in combined
-                for term in irrelevant_terms
-            ):
-                continue
-
-            # Require actual AI relevance.
+            # Must actually discuss AI.
             if not any(
                 term in combined
                 for term in ai_terms
             ):
                 continue
 
-            # Reject extremely short search results.
+            # Reject obvious unrelated stories.
+            if any(
+                term in combined
+                for term in irrelevant_terms
+            ):
+                continue
+
+            # Reject obvious opinion/promotional pages.
+            if any(
+                term in combined
+                for term in weak_source_terms
+            ):
+                continue
+
             if len(title) < 10:
                 continue
 
-            if len(content) < 80:
+            if len(content) < 100:
                 continue
 
             filtered_sources.append(source)
 
-                # -------------------- Deduplicate similar stories --------------------
+        # -------------------- Prefer concrete developments --------------------
+
+        development_terms = [
+            "launched",
+            "launches",
+            "released",
+            "release",
+            "unveiled",
+            "announced",
+            "announces",
+            "introduced",
+            "deployed",
+            "deployment",
+            "partnered",
+            "partnership",
+            "acquired",
+            "acquisition",
+            "funding",
+            "raised",
+            "investment",
+            "model",
+            "research",
+            "breakthrough",
+            "regulation",
+            "legislation",
+            "chips",
+            "data center",
+            "infrastructure",
+            "robotics",
+            "agent",
+        ]
+
+        ranked_sources = []
+
+        for source in filtered_sources:
+
+            title = str(
+                source.get("title", "")
+            ).strip()
+
+            content = str(
+                source.get("content", "")
+            ).strip()
+
+            combined = (
+                title.lower()
+                + " "
+                + content.lower()
+            )
+
+            score = 0
+
+            for term in development_terms:
+                if term in combined:
+                    score += 2
+
+            # Title matches are more important.
+            title_lower = title.lower()
+
+            for term in development_terms:
+                if term in title_lower:
+                    score += 4
+
+            # Prefer sources with more substantive article text.
+            if len(content) >= 500:
+                score += 2
+
+            if len(content) >= 1000:
+                score += 2
+
+            ranked_sources.append(
+                (score, source)
+            )
+
+        ranked_sources.sort(
+            key=lambda item: item[0],
+            reverse=True
+        )
+
+        # -------------------- Deduplicate similar headlines --------------------
 
         final_sources = []
         seen_title_tokens = []
 
-        for source in filtered_sources:
+        for _, source in ranked_sources:
 
             title = str(
                 source.get("title", "")
@@ -632,19 +738,20 @@ async def research(query):
                 )
             )
 
-            is_duplicate = False
+            if not title_tokens:
+                continue
+
+            duplicate = False
 
             for previous_tokens in seen_title_tokens:
-
-                if not title_tokens:
-                    continue
 
                 overlap = len(
                     title_tokens & previous_tokens
                 )
 
                 similarity = (
-                    overlap / max(
+                    overlap
+                    / max(
                         len(title_tokens),
                         len(previous_tokens),
                         1
@@ -652,16 +759,18 @@ async def research(query):
                 )
 
                 if similarity >= 0.60:
-                    is_duplicate = True
+                    duplicate = True
                     break
 
-            if is_duplicate:
+            if duplicate:
                 continue
 
             final_sources.append(source)
             seen_title_tokens.append(title_tokens)
 
-        final_sources = final_sources[:12]
+            # Keep a reasonably large evidence pool.
+            if len(final_sources) >= 15:
+                break
 
         return {
             "answer": "",
@@ -675,7 +784,6 @@ async def research(query):
             "sources": [],
             "error": f"{type(exc).__name__}: {exc}",
         }
-    
                     
 def should_research(query):
     q = query.lower()

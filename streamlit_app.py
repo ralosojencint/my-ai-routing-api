@@ -455,41 +455,7 @@ from today or the most recent available AI news.
 
 current_date = date.today().isoformat()
 
-research_query = f"""
-Find exactly 5 REAL and DISTINCT artificial-intelligence news
-developments for the user's request.
-
-TODAY'S DATE: {current_date}
-
-USER REQUEST:
-{query}
-
-DATE PRIORITY:
-1. First prioritize developments published TODAY ({current_date}).
-2. If fewer than 5 credible developments are available today,
-   use developments published YESTERDAY.
-3. Only use older articles when absolutely necessary.
-4. Never present an older event as if it happened today.
-5. Prefer articles with a clearly identifiable publication date.
-
-QUALITY REQUIREMENTS:
-- Every development must be a specific, verifiable AI event.
-- Prefer product/model launches, company announcements,
-  funding, acquisitions, research releases, major partnerships,
-  and AI regulation/policy decisions.
-- Prefer Reuters, AP, Bloomberg, Financial Times, official company
-  announcements, government sources, research organizations,
-  and established technology publications.
-- Do NOT return generic AI trends.
-- Do NOT return predictions.
-- Do NOT invent facts.
-- Do NOT use horoscope, sports, weather, stock-market,
-  admissions, travel, or unrelated business articles.
-- Each of the 5 developments must be DISTINCT.
-
-Return research evidence that allows NEXUS to produce exactly
-5 short developments.
-"""
+research_query = f"Find exactly 5 real and distinct AI news developments for {current_date}. Prioritize developments published today, then yesterday. Use specific, verifiable AI events only. Avoid generic trends, predictions, and unrelated topics. Prefer reputable news sources, official company announcements, government sources, and research organizations. Do not invent facts. User request: {query}"
 
         result = await asyncio.to_thread(
             client.search,

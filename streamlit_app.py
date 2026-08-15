@@ -744,7 +744,22 @@ RECENT MEMORY:
 
     if should_research(query):
 
-        st.session_state.activity.append("Deep research")
+    q_lower = query.lower()
+
+    asks_latest_model = any(
+        phrase in q_lower
+        for phrase in [
+            "latest ai model",
+            "latest model",
+            "newest ai model",
+            "new ai model",
+            "ai model released",
+            "model released today",
+            "model launch",
+        ]
+    )
+
+    st.session_state.activity.append("Deep research")
 
         research_result = await research(query)
 

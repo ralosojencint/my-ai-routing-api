@@ -431,8 +431,7 @@ async def gemini_text(prompt, images=None):
                     "Please try your message again in a moment."
                 )
 
-                        return await groq_text(prompt, images=images)
-
+                        
     return "⚠️ NEXUS couldn't complete the request. Please try again."
 async def research(query):
     client = tavily_client()

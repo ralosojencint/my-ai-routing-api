@@ -52,7 +52,7 @@ GEMINI_API_KEY = get_secret("GEMINI_API_KEY")
 TAVILY_API_KEY = get_secret("TAVILY_API_KEY")
 GROQ_API_KEY = get_secret("GROQ_API_KEY")
 
-MODEL = "test-invalid-model"
+MODEL = "gemini-3.5-flash"
 
 # -------------------- Persistent memory --------------------
 
@@ -431,7 +431,7 @@ async def gemini_text(prompt, images=None):
                     "Please try your message again in a moment."
                 )
 
-            return f"⚠️ Gemini couldn't complete the request: {exc}"
+                        return await groq_text(prompt, images=images)
 
     return "⚠️ NEXUS couldn't complete the request. Please try again."
 async def research(query):

@@ -498,7 +498,7 @@ async def research(query):
                     query=search_query,
                     search_depth="advanced",
                     topic="news",
-                    time_range="day",
+                    time_range="week",
                     max_results=8,
                     include_answer=False,
                 )

@@ -617,56 +617,40 @@ async def research(query):
 
         filtered_sources = []
 
-        for source in unique_sources:
+for source in unique_sources:
 
-            title = str(
-                source.get("title", "")
-            ).strip()
+    title = str(
+        source.get("title", "")
+    ).strip()
 
-            content = str(
-                source.get("content", "")
-            ).strip()
+    content = str(
+        source.get("content", "")
+    ).strip()
 
-            published = str(
-                source.get("published_date", "")
-            ).strip()
+    if not title:
+        continue
 
-            combined = (
-                title.lower()
-                + " "
-                + content.lower()
-                + " "
-                + published.lower()
-            )
+    combined = (
+        title.lower()
+        + " "
+        + content.lower()
+    )
 
-            # Must actually discuss AI.
-            if not any(
-                term in combined
-                for term in ai_terms
-            ):
-                continue
+    # Keep sources that are clearly about AI.
+    if not any(
+        term in combined
+        for term in ai_terms
+    ):
+        continue
 
-            # Reject obvious unrelated stories.
-            if any(
-                term in combined
-                for term in irrelevant_terms
-            ):
-                continue
+    # Only reject very obvious unrelated content.
+    if any(
+        term in combined
+        for term in irrelevant_terms
+    ):
+        continue
 
-            # Reject obvious opinion/promotional pages.
-            if any(
-                term in combined
-                for term in weak_source_terms
-            ):
-                continue
-
-            if len(title) < 10:
-                continue
-
-            if len(content) < 100:
-                continue
-
-            filtered_sources.append(source)
+    filtered_sources.append(source)
 
         # -------------------- Prefer concrete developments --------------------
 

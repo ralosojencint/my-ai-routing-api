@@ -1,0 +1,27 @@
+name: NEXUS Quality Gate
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install test runner
+        run: python -m pip install -r requirements-test.txt
+
+      - name: Syntax check
+        run: python -m py_compile streamlit_app.py
+
+      - name: Run NEXUS regression suite
+        run: pytest

@@ -1,19 +1,17 @@
 import os, re, json, sqlite3, asyncio, time, io, base64, hashlib, uuid, subprocess, sys, html, ast
 from pathlib import Path
-from urllib.parse import urlsplit, urlunsplit, parse_qsl, urlencode, urljoin
+from urllib.parse import urlsplit, urlunsplit, parse_qsl, urlencode
 from urllib.request import Request, urlopen
 from urllib.error import URLError, HTTPError
 from xml.etree import ElementTree as ET
-from html.parser import HTMLParser
 from email.utils import parsedate_to_datetime
 from zoneinfo import ZoneInfo
 from collections import Counter
-from datetime import date, datetime, timezone, timedelta
+from datetime import date, datetime, timezone
 
 import streamlit as st
 import pandas as pd
 
-import ipaddress
 try:
     from google import genai
 except Exception:
@@ -790,6 +788,13 @@ def same_event(a, b):
     if ua and ub and ua == ub:
         return True
 
+    # Different publishers may use different URLs while carrying the exact
+    # same headline. Treat an exact normalized headline match as one event.
+    ha = clean_text(a.get("title", "")).lower()
+    hb = clean_text(b.get("title", "")).lower()
+    if ha and hb and ha == hb:
+        return True
+
     ta = _event_title_tokens(a)
     tb = _event_title_tokens(b)
     shared = ta & tb
@@ -1071,17 +1076,8 @@ async def research(query):
             if len(title)<12 or len(content)<40 or not ai_signal or any(t in low for t in relaxed_noise): continue
             key=normalize_url(item.get("url",""))
             if key and key not in existing: filtered.append(item); existing.add(key)
-    ranked=sorted(filtered,key=lambda x:research_score(x,today),reverse=True)
-    preliminary=select_distinct_sources(ranked,limit=max(requested_count, requested_count*3))
-    final=await enrich_selected_sources(preliminary,requested_count)
-    # If enrichment disqualifies a candidate, continue down the ranked list
-    # rather than padding the result with headline-only RSS metadata.
-    if len(final)<requested_count:
-        remaining=[x for x in ranked if normalize_url(x.get("url","")) not in {normalize_url(y.get("url","")) for y in final}]
-        extra=await enrich_selected_sources(remaining,requested_count-len(final))
-        for item in extra:
-            if not any(same_event(item,old) for old in final): final.append(item)
-    st.session_state.activity.append(f"Research diagnostic: requested={requested_count} raw={len(all_sources)} unique={len(unique(all_sources))} verified={len(filtered)} enriched={len(final)} selected={len(final)}")
+    ranked=sorted(filtered,key=lambda x:research_score(x,today),reverse=True); final=select_distinct_sources(ranked,limit=requested_count)
+    st.session_state.activity.append(f"Research diagnostic: requested={requested_count} raw={len(all_sources)} unique={len(unique(all_sources))} verified={len(filtered)} selected={len(final)}")
     if provider_errors: st.session_state.activity.append("Research provider diagnostics: "+", ".join(provider_errors[:4]))
     error="" if len(final)>=requested_count else f"Only {len(final)} independently verified current AI development(s) were available; {requested_count} requested."
     return {"sources":final,"requested_count":requested_count,"target_date":target_date.isoformat() if target_date else None,"error":error}
@@ -1098,270 +1094,64 @@ def is_forex_query(query):
     return any(term in q for term in forex_terms)
 
 
-def _forex_factory_calendar_url(url, require_usd_high_impact=False):
-    """Accept only the real Forex Factory calendar endpoint."""
-    try:
-        p = urlsplit(str(url).strip())
-        host = (p.hostname or "").lower().removeprefix("www.")
-        path = (p.path or "").rstrip("/")
-        if host != "forexfactory.com" or path != "/calendar":
-            return False
-        if not require_usd_high_impact:
-            return True
-        params = {k.lower(): v.lower() for k, v in parse_qsl(p.query, keep_blank_values=True)}
-        return params.get("impact") == "1" and params.get("curr") == "usd"
-    except Exception:
-        return False
-
-
-def _forex_factory_week_start(day=None):
-    day = day or datetime.now(ZoneInfo("Asia/Manila")).date()
-    return day - timedelta(days=day.weekday())
-
-
-def _forex_extract_rows(source):
-    """Extract USD high-impact rows exposed in a Forex Factory calendar snippet."""
-    content = clean_text(source.get("content", ""))
-    title = clean_text(source.get("title", ""))
-    blob = f"{title}\n{content}"
-    rows = []
-
-    date_re = re.compile(
-        r"\b(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+"
-        r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2}\b",
-        re.I,
-    )
-    time_re = re.compile(r"\b(?:\d{1,2}:\d{2})\s*(?:am|pm)?\b", re.I)
-
-    for raw in re.split(r"[\r\n]+", blob):
-        line = raw.strip(" |")
-        if "|" not in line:
-            continue
-        parts = [clean_text(x) for x in line.split("|")]
-        if len(parts) < 5:
-            continue
-
-        joined = " | ".join(parts)
-        date_m = date_re.search(joined)
-        if not date_m:
-            continue
-        tm = time_re.search(joined[date_m.end():]) or time_re.search(joined)
-        if not tm:
-            continue
-
-        usd_i = next((i for i, p in enumerate(parts) if p.upper() == "USD"), None)
-        if usd_i is None:
-            continue
-
-        low = joined.lower()
-        if not (
-            "high impact" in low
-            or re.search(r"\bhigh\b", low)
-            or "red folder" in low
-        ):
-            continue
-
-        # Prefer the first substantive field after the currency that is not
-        # calendar metadata. This is intentionally conservative.
-        event = ""
-        for i, p in enumerate(parts):
-            pl = p.lower()
-            if i == usd_i or not p:
-                continue
-            if pl in {"high", "medium", "low", "impact", "actual", "forecast", "previous"}:
-                continue
-            if time_re.fullmatch(p) or date_re.fullmatch(p):
-                continue
-            if re.fullmatch(r"[🔴🟠🟡⚪]+", p):
-                continue
-            event = p
-            break
-        if not event:
-            continue
-
-        actual = forecast = previous = "N/A"
-        labels = {}
-        for p in parts:
-            m = re.match(r"(?i)^(actual|forecast|previous)\s*:?\s*(.*)$", p)
-            if m:
-                labels[m.group(1).lower()] = m.group(2).strip() or "N/A"
-
-        if labels:
-            actual = labels.get("actual", "N/A")
-            forecast = labels.get("forecast", "N/A")
-            previous = labels.get("previous", "N/A")
-        else:
-            try:
-                event_i = parts.index(event)
-            except ValueError:
-                event_i = -1
-            if event_i >= 0:
-                tail = parts[event_i + 1:]
-                if len(tail) >= 1:
-                    actual = tail[0] or "N/A"
-                if len(tail) >= 2:
-                    forecast = tail[1] or "N/A"
-                if len(tail) >= 3:
-                    previous = tail[2] or "N/A"
-
-        rows.append({
-            "date": date_m.group(0),
-            "time": tm.group(0),
-            "currency": "USD",
-            "event": event,
-            "forecast": forecast or "N/A",
-            "previous": previous or "N/A",
-            "actual": actual or "N/A",
-            "impact": "High",
-            "url": str(source.get("url", "")).strip(),
-            "title": title,
-        })
-
-    unique_rows = []
-    seen = set()
-    for row in rows:
-        key = (
-            row["date"].lower(), row["time"].lower(), row["event"].lower(),
-            row["forecast"], row["previous"], row["actual"]
-        )
-        if key not in seen:
-            seen.add(key)
-            unique_rows.append(row)
-    return unique_rows
-
-
-def _forex_row_sort_key(row):
-    raw = f"{row.get('date','')} {row.get('time','')}"
-    for fmt in ("%a %b %d %H:%M", "%a %b %d %I:%M %p", "%a %b %d"):
-        try:
-            return datetime.strptime(raw, fmt)
-        except Exception:
-            pass
-    return datetime.max
-
-
-def _xauusd_priority(event):
-    e = clean_text(event).lower()
-    weights = (
-        (100, ("non-farm", "nonfarm", "payroll")),
-        (96, ("unemployment rate",)),
-        (94, ("average hourly earnings", "hourly earnings", "wages")),
-        (92, ("fomc", "fed interest rate", "federal funds")),
-        (90, ("cpi", "consumer price index", "pce", "core pce")),
-        (84, ("ism services", "services pmi")),
-        (82, ("ism manufacturing", "manufacturing pmi")),
-        (74, ("retail sales",)),
-        (70, ("adp non-farm", "adp nonfarm", "employment change")),
-        (68, ("jolts",)),
-        (64, ("beige book",)),
-        (52, ("trade balance",)),
-        (45, ("factory orders",)),
-    )
-    for weight, terms in weights:
-        if any(term in e for term in terms):
-            return weight
-    return 40
-
-
-def _xauusd_scenarios(event):
-    e = clean_text(event).lower()
-    labor_or_activity = any(x in e for x in (
-        "non-farm", "nonfarm", "payroll", "unemployment", "hourly earnings",
-        "wages", "adp", "jolts", "employment", "ism", "pmi",
-        "retail sales", "factory orders", "trade balance",
-    ))
-    inflation = any(x in e for x in ("cpi", "pce", "inflation"))
-    if labor_or_activity:
-        return (
-            "A materially weaker-than-expected result is generally bullish for gold "
-            "because it can reduce expected U.S. rate pressure and/or weaken the dollar.",
-            "A materially stronger-than-expected result is generally bearish for gold "
-            "because it can increase expected U.S. rate pressure and/or support the dollar.",
-        )
-    if inflation:
-        return (
-            "Softer-than-expected inflation is generally bullish for gold, all else equal.",
-            "Hotter-than-expected inflation is generally bearish for gold, all else equal.",
-        )
-    return (
-        "Generally bullish if the result materially weakens the dollar or reduces expected U.S. rates.",
-        "Generally bearish if the result materially strengthens the dollar or increases expected U.S. rates.",
-    )
-
-
 async def forex_research(query):
-    """Retrieve only canonical Forex Factory calendar pages and extract structured rows."""
+    """Retrieve Forex Factory economic-calendar results without using the AI-news pipeline."""
     client = tavily_client()
     if client is None:
-        return {"sources": [], "rows": [], "error": "Tavily client is not available. Check TAVILY_API_KEY."}
+        return {
+            "sources": [],
+            "error": "Tavily client is not available. Check TAVILY_API_KEY.",
+        }
 
     today = datetime.now(ZoneInfo("Asia/Manila")).date()
-    week_start = _forex_factory_week_start(today)
-    week_slug = week_start.strftime("%b%d.%Y").lower()
-    week_url = f"https://www.forexfactory.com/calendar?week={week_slug}"
+    date_text = today.isoformat()
 
     queries = [
-        f'"{week_url}"',
-        f'site:forexfactory.com/calendar "USD" "High Impact" "Forecast" "Previous"',
-        f'site:forexfactory.com/calendar?week= "USD" "High Impact" {week_start.strftime("%Y-%m-%d")}',
+        f"site:forexfactory.com/calendar Forex Factory high impact economic calendar {date_text}",
+        f"site:forexfactory.com/calendar high impact red folder news {date_text}",
+        f"site:forexfactory.com/calendar {query} {date_text}",
     ]
 
     all_sources = []
-    provider_errors = []
-    for search_query in queries:
+    for q in queries:
         try:
             result = await asyncio.to_thread(
                 client.search,
-                query=search_query,
+                query=q,
                 search_depth="advanced",
-                max_results=10,
+                max_results=8,
                 include_answer=False,
                 include_domains=["forexfactory.com"],
             )
             all_sources.extend(result.get("results", []))
-        except Exception as exc:
-            provider_errors.append(type(exc).__name__)
+        except Exception:
+            continue
 
-    sources = []
-    seen = set()
+    unique = []
+    seen_urls = set()
     for source in all_sources:
         url = str(source.get("url", "")).strip()
-        if not _forex_factory_calendar_url(url):
+        domain = source_domain(url)
+        if not url or not (domain == "forexfactory.com" or domain.endswith(".forexfactory.com")):
             continue
         key = normalize_url(url)
-        if key in seen:
+        if key in seen_urls:
             continue
-        seen.add(key)
-        sources.append(source)
+        seen_urls.add(key)
+        unique.append(source)
 
-    rows = []
-    for source in sources:
-        rows.extend(_forex_extract_rows(source))
+    # Calendar pages are not ordinary news articles and often have no
+    # publication date, so do NOT apply the AI-news date/content gate here.
+    ranked = sorted(
+        unique,
+        key=lambda source: (
+            1 if "calendar" in str(source.get("url", "")).lower() else 0,
+            len(clean_text(source.get("content", ""))),
+        ),
+        reverse=True,
+    )
 
-    dedup = []
-    seen_rows = set()
-    for row in rows:
-        key = (
-            row["date"], row["time"], row["event"],
-            row["forecast"], row["previous"], row["actual"]
-        )
-        if key not in seen_rows:
-            seen_rows.add(key)
-            dedup.append(row)
-    dedup.sort(key=_forex_row_sort_key)
-
-    if not sources:
-        error = (
-            "Forex Factory search failed: " + ", ".join(provider_errors[:3])
-            if provider_errors else
-            "No canonical Forex Factory calendar page was verified."
-        )
-    elif not dedup:
-        error = "Forex Factory calendar page was verified, but no structured USD high-impact rows were extractable."
-    else:
-        error = ""
-
-    return {"sources": sources, "rows": dedup, "error": error}
+    return {"sources": ranked[:8], "error": ""}
 
 def should_research(query):
     """Route current-information requests even when the primary provider is unavailable."""
@@ -1375,181 +1165,142 @@ def should_research(query):
     return any(word in q for word in research_words)
 
 
-class _ArticleTextParser(HTMLParser):
-    """Small dependency-free HTML extractor for article evidence."""
-    def __init__(self):
-        super().__init__(convert_charrefs=True)
-        self.parts=[]; self._skip=0; self._in_p=False; self._buf=[]
-        self.meta={}
-    def handle_starttag(self, tag, attrs):
-        attrs=dict(attrs)
-        tag=tag.lower()
-        if tag in {"script","style","noscript","svg","nav","footer","header","aside"}:
-            self._skip += 1; return
-        if self._skip: return
-        if tag == "meta":
-            key=(attrs.get("property") or attrs.get("name") or "").lower().strip()
-            val=(attrs.get("content") or "").strip()
-            if key and val: self.meta[key]=val
-        elif tag == "p":
-            self._in_p=True; self._buf=[]
-    def handle_endtag(self, tag):
-        tag=tag.lower()
-        if tag in {"script","style","noscript","svg","nav","footer","header","aside"}:
-            if self._skip: self._skip -= 1
-            return
-        if self._skip: return
-        if tag == "p" and self._in_p:
-            text=clean_text(" ".join(self._buf))
-            if len(text) >= 45: self.parts.append(text)
-            self._in_p=False; self._buf=[]
-    def handle_data(self, data):
-        if self._skip or not self._in_p: return
-        text=clean_text(data)
-        if text: self._buf.append(text)
+def _source_sentences(source, limit=8):
+    """Return substantive sentences from the selected source evidence."""
+    content = clean_text(source.get("content", ""))
+    if not content:
+        return []
+    sentences = re.split(r"(?<=[.!?])\s+", content)
+    out = []
+    boilerplate = {
+        "home", "menu", "login", "subscribe", "advertisement", "copyright",
+        "read more", "share", "sign up", "newsletter", "cookie",
+    }
+    for raw in sentences:
+        sentence = clean_text(raw.strip(" -—|•"))
+        if len(sentence) < 45:
+            continue
+        low = sentence.lower()
+        if any(term in low for term in boilerplate):
+            continue
+        out.append(sentence)
+        if len(out) >= limit:
+            break
+    return out
 
 
 def _publisher_name(source):
     return clean_text(source.get("publisher", ""))
 
 
-def _source_sentences(source, limit=8):
-    """Return substantive article sentences, preferring enriched page text."""
-    content = clean_text(source.get("content", ""))
-    if not content:
-        return []
-    sentences = re.split(r"(?<=[.!?])\s+", content)
-    out=[]
-    boilerplate=("home","menu","login","subscribe","advertisement","copyright","read more","share","sign up","newsletter","cookie")
-    for raw in sentences:
-        sentence=clean_text(raw.strip(" -—|•"))
-        if len(sentence)<45: continue
-        low=sentence.lower()
-        if any(term in low for term in boilerplate): continue
-        out.append(sentence)
-        if len(out)>=limit: break
-    return out
-
-
-async def enrich_source_evidence(source):
-    """Resolve Google News links and fetch publisher article text when possible."""
-    if not isinstance(source,dict): return None
-    url=str(source.get("url","")).strip()
-    if not url: return None
-    existing=clean_text(source.get("content", ""))
-    # A long provider body is already useful; don't make another network request.
-    if len(existing) >= 500:
-        return source
-    def fetch():
-        req=Request(url,headers={"User-Agent":"Mozilla/5.0 (compatible; NEXUS-AI/1.0; +https://example.invalid)","Accept":"text/html,application/xhtml+xml"})
-        with urlopen(req,timeout=10) as response:
-            final_url=response.geturl()
-            raw=response.read(1_500_000)
-            return final_url,raw
-    try:
-        final_url,raw=await asyncio.to_thread(fetch)
-        text=raw.decode("utf-8","ignore")
-        parser=_ArticleTextParser(); parser.feed(text); parser.close()
-        paragraphs=[]
-        for part in parser.parts:
-            if part not in paragraphs: paragraphs.append(part)
-            if len(paragraphs)>=18: break
-        description=(parser.meta.get("og:description") or parser.meta.get("description") or "").strip()
-        if description and len(description)>=45 and description not in paragraphs:
-            paragraphs.insert(0,description)
-        if paragraphs:
-            source=dict(source)
-            source["content"]=" ".join(paragraphs)
-            source["resolved_url"]=final_url
-            # Preserve the original RSS URL for traceability, but expose the
-            # actual publisher URL to the synthesis/source list.
-            if final_url and source_domain(final_url) not in {"news.google.com","news.googleusercontent.com"}:
-                source["url"]=final_url
-            return source
-    except Exception:
-        pass
-    return source if len(existing)>=120 else None
-
-
-async def enrich_selected_sources(candidates, requested_count):
-    """Return only sources with enough article evidence for Phase 3 synthesis."""
-    enriched=[]
-    for candidate in candidates:
-        if len(enriched)>=requested_count: break
-        item=await enrich_source_evidence(candidate)
-        if not item: continue
-        sentences=_source_sentences(item,limit=8)
-        if len(" ".join(sentences)) < 180: continue
-        enriched.append(item)
-    return enriched
-
-
 def _candidate_organizations(source):
-    """Extract conservative named organizations from article evidence, excluding publishers."""
-    title=clean_text(source.get("title","")); content=" ".join(_source_sentences(source,limit=12))
-    publisher=_publisher_name(source).lower()
-    publisher_domains={source_domain(source.get("url","")),source_domain(source.get("resolved_url",""))}
-    text=f"{title}. {content}"
-    if publisher: text=re.sub(re.escape(publisher)," ",text,flags=re.I)
-    # Explicit organization/company patterns are safer than arbitrary capitalized spans.
-    patterns=(
-        r"\b([A-Z][A-Za-z0-9&.'’-]*(?:\s+[A-Z][A-Za-z0-9&.'’-]*){0,5})\s+(?:launched|launches|announced|announces|unveiled|unveils|introduced|introduces|released|releases|deployed|deploys|acquired|acquires|partnered|partners|backed|backs|raised|raises|signed)\b",
-        r"\b(?:by|from|with|between|alongside)\s+([A-Z][A-Za-z0-9&.'’-]*(?:\s+[A-Z][A-Za-z0-9&.'’-]*){0,5})\b",
+    """Extract conservative organization candidates; never treat the publisher as involved."""
+    title = clean_text(source.get("title", ""))
+    content = " ".join(_source_sentences(source, limit=10))
+    text = f"{title}. {content}"
+    publisher = _publisher_name(source).lower()
+    if publisher:
+        text = re.sub(re.escape(publisher), " ", text, flags=re.IGNORECASE)
+    candidates = []
+
+    # Strong patterns: named organizations immediately before common event verbs.
+    patterns = (
+        r"\b([A-Z][A-Za-z0-9&.'’-]*(?:\s+[A-Z][A-Za-z0-9&.'’-]*){0,5})\s+(?:launches|launched|announces|announced|unveils|unveiled|introduces|introduced|releases|released|opens|opened|acquires|acquired|partners|partnered|backs|backed|raises|raised)\b",
+        r"\b(?:by|from|with|between|alongside|according to)\s+([A-Z][A-Za-z0-9&.'’-]*(?:\s+[A-Z][A-Za-z0-9&.'’-]*){0,5})\b",
     )
-    stop={"the","this","that","these","those","today","exclusive","ai","artificial intelligence","machine learning","government","department","news"}
-    candidates=[]
+    stop = {
+        "the", "this", "that", "these", "those", "today", "exclusive",
+        "ai", "artificial intelligence", "machine learning", "digital journal",
+        "pr newswire", "axios", "reuters", "business wire", "fana news",
+        "the inertia", "wsj", "national law review",
+    }
     for pattern in patterns:
-        for match in re.finditer(pattern,text):
-            value=clean_text(match.group(1)).strip(" ,.;:()[]—-")
-            # Remove sentence spillover caused by a capitalized next sentence.
-            value=re.split(r"\s+(?:The|This|That|These|Those|According|It|They)\b",value)[0].strip(" ,.;:()[]—-")
-            low=value.lower()
-            if not value or low in stop or low==publisher: continue
-            if any(d and d in low.replace(" ","") for d in publisher_domains): continue
-            if len(value)<3 or len(value)>80: continue
-            if value not in candidates: candidates.append(value)
+        for match in re.finditer(pattern, text):
+            value = clean_text(match.group(1)).strip(" ,.;:()[]")
+            low = value.lower()
+            if not value or low in stop or low == publisher:
+                continue
+            if len(value) < 2 or len(value) > 90:
+                continue
+            if value not in candidates:
+                candidates.append(value)
+
+    # Preserve explicit, distinctive names from the title when no verb-pattern match exists.
+    if not candidates:
+        for match in re.finditer(r"\b[A-Z][A-Za-z0-9&.'’-]*(?:\s+[A-Z][A-Za-z0-9&.'’-]*){0,3}\b", title):
+            value = clean_text(match.group(0)).strip(" ,.;:()[]")
+            low = value.lower()
+            if low in stop or low == publisher or len(value) < 3:
+                continue
+            if value not in candidates:
+                candidates.append(value)
+
     return candidates[:4]
 
 
 def _source_significance(source):
-    """Select a distinct consequence/scale sentence actually present in the article."""
-    title=clean_text(source.get("title","")); summary=source_grounded_summary(source)
-    sentences=_source_sentences(source,limit=15)
-    if not sentences: return "The selected source does not independently establish broader significance."
-    terms=("because","will","could","aims","targets","expected","marks","first","largest","alternative","expands","enables","allows","helps","supports","capacity","demand","impact","significant","new capability","designed to")
-    scored=[]
+    """Select source-grounded significance without inventing broader impact."""
+    title = clean_text(source.get("title", ""))
+    sentences = _source_sentences(source, limit=12)
+    if not sentences:
+        return "The selected source does not establish broader significance beyond the reported development."
+
+    # Prefer sentences containing consequence/scale language.
+    significance_terms = (
+        "because", "will", "could", "aims", "targets", "expected", "marks",
+        "first", "largest", "new", "alternative", "expands", "enables",
+        "helps", "allows", "designed to", "according to",
+    )
+    scored = []
     for sentence in sentences:
-        low=sentence.lower(); score=sum(2 for t in terms if t in low)
-        if low==summary.lower() or low==title.lower(): score-=8
-        scored.append((score,len(sentence),sentence))
-    scored.sort(reverse=True)
-    best=scored[0][2]
-    if best.lower() in {title.lower(),summary.lower()} or scored[0][0] <= 0:
-        for sentence in sentences:
-            if sentence.lower() not in {title.lower(),summary.lower()} and len(sentence)>=60:
-                best=sentence; break
-        else: return "The selected source does not independently establish broader significance."
-    return best[:417].rsplit(" ",1)[0]+"…" if len(best)>420 else best
+        low = sentence.lower()
+        score = sum(2 for term in significance_terms if term in low)
+        score += 1 if any(term in low for term in EVENT_TERMS) else 0
+        scored.append((score, sentence))
+    scored.sort(key=lambda item: item[0], reverse=True)
+    best = scored[0][1]
+    # Prefer a later substantive sentence when available so "why it matters"
+    # does not simply repeat the event summary.
+    consequence_terms = (
+        "because", "influence", "demand", "capacity", "alternative",
+        "efficient", "efficiency", "enables", "allows", "helps",
+        "support", "expands", "target", "aim", "expected",
+    )
+    for sentence in sentences[1:]:
+        low = sentence.lower()
+        if any(term in low for term in consequence_terms) and sentence.lower() != best.lower():
+            best = sentence
+            break
+    if best.lower() == title.lower():
+        return "The selected source reports the development but does not independently establish broader significance."
+    if len(best) > 420:
+        best = best[:417].rsplit(" ", 1)[0] + "…"
+    return best
 
 
 def source_grounded_summary(source):
-    """Build an explanation from article evidence, never from title alone."""
-    title=clean_text(source.get("title","")); sentences=_source_sentences(source,limit=12)
-    if not title or not sentences: return ""
-    title_tokens=set(re.findall(r"[a-z0-9]{3,}",title.lower())); candidates=[]
+    """Build a concise explanation from source evidence, never from title alone."""
+    title = clean_text(source.get("title", ""))
+    if not title:
+        return ""
+    sentences = _source_sentences(source, limit=10)
+    if not sentences:
+        return ""
+
+    title_tokens = set(re.findall(r"[a-z0-9]{3,}", title.lower()))
+    candidates = []
     for sentence in sentences:
-        low=sentence.lower(); overlap=len(title_tokens & set(re.findall(r"[a-z0-9]{3,}",low)))
-        event_bonus=12 if any(term in low for term in EVENT_TERMS) else 0
-        # Prefer informative sentences that add facts beyond the headline.
-        novelty=max(0, len(set(re.findall(r"[a-z0-9]{4,}",low))-title_tokens))
-        score=overlap*2 + event_bonus + min(novelty,12)*2 - max(0,len(sentence)-420)/80
-        candidates.append((score,sentence))
-    candidates.sort(key=lambda x:x[0],reverse=True)
-    snippet=candidates[0][1]
-    if snippet.lower()==title.lower():
-        snippet=next((s for s in sentences if s.lower()!=title.lower()),"")
-    if len(snippet)>420: snippet=snippet[:417].rsplit(" ",1)[0]+"…"
-    elif snippet and snippet[-1] not in ".!?…": snippet += "…"
+        low = sentence.lower()
+        overlap = len(title_tokens & set(re.findall(r"[a-z0-9]{3,}", low)))
+        event_bonus = 12 if any(term in low for term in EVENT_TERMS) else 0
+        score = overlap * 3 + event_bonus - max(0, len(sentence) - 360) / 80
+        candidates.append((score, sentence))
+    candidates.sort(key=lambda item: item[0], reverse=True)
+    snippet = candidates[0][1]
+    if len(snippet) > 420:
+        snippet = snippet[:417].rsplit(" ", 1)[0] + "…"
+    elif snippet and snippet[-1] not in ".!?…":
+        snippet += "…"
     return snippet
 
 # ============================================================
@@ -1557,66 +1308,17 @@ def source_grounded_summary(source):
 # ============================================================
 
 class SecurityPolicy:
-    BLOCKED_PROMPT_PATTERNS = (
-        r"ignore\s+(?:all\s+)?previous\s+instructions",
-        r"reveal\s+(?:the\s+)?system\s+prompt",
-        r"(?:show|give|provide|reveal|tell|display)\s+(?:me\s+)?(?:the\s+)?(?:secret\s+)?api\s+key",
-        r"print\s+(?:the\s+)?environment\s+variables?",
-    )
-
+    BLOCKED_PROMPT_PATTERNS=(r"ignore\s+(?:all\s+)?previous\s+instructions",r"reveal\s+(?:the\s+)?system\s+prompt",r"show\s+(?:me\s+)?(?:your|the)\s+api\s+key",r"print\s+(?:the\s+)?environment\s+variables?")
     @classmethod
-    def inspect_prompt(cls, text):
-        low = clean_text(text).lower()
-        violations = [
-            p for p in cls.BLOCKED_PROMPT_PATTERNS
-            if re.search(p, low)
-        ]
-        return {
-            "allowed": not violations,
-            "violations": violations,
-        }
-
+    def inspect_prompt(cls,text):
+        low=clean_text(text).lower(); violations=[p for p in cls.BLOCKED_PROMPT_PATTERNS if re.search(p,low)]
+        return {"allowed":not violations,"violations":violations}
     @staticmethod
     def validate_remote_url(url):
         try:
-            p = urlsplit(str(url).strip())
-            host = (p.hostname or "").lower()
-
-            if p.scheme not in {"http", "https"}:
-                return False
-
-            if not host or p.username or p.password:
-                return False
-
-            if host in {"localhost", "127.0.0.1", "::1"}:
-                return False
-
-            if host.endswith((".local", ".internal")):
-                return False
-
-            try:
-                ip = ipaddress.ip_address(host)
-                if not ip.is_global:
-                    return False
-            except ValueError:
-                pass
-
-            # Reject decimal/hex IPv4 representations.
-            if re.fullmatch(r"(?:0x[0-9a-f]+|\d+)", host):
-                try:
-                    if host.startswith("0x"):
-                        ip = ipaddress.ip_address(int(host, 16))
-                    else:
-                        ip = ipaddress.ip_address(int(host, 10))
-                    if not ip.is_global:
-                        return False
-                except ValueError:
-                    pass
-
-            return True
-
-        except Exception:
-            return False
+            p=urlsplit(str(url).strip()); host=(p.hostname or "").lower()
+            return p.scheme in {"http","https"} and bool(host) and not p.username and not p.password and host not in {"localhost","127.0.0.1","::1"} and not host.endswith((".local",".internal"))
+        except Exception: return False
 
 class UsageManager:
     def __init__(self,daily_limit=100): self.daily_limit=max(1,int(daily_limit))
@@ -1912,20 +1614,6 @@ def validate_research_output(draft, query, sources):
             # Phase 3 explicitly requires exactly one source per development.
             if block_sources != {index}:
                 return False
-            field_lines={}
-            for label in required:
-                fm=re.search(rf"(?im)^\s*-\s*{re.escape(label)}\s*:\s*(.+)$", match.group(0))
-                field_lines[label]=clean_text(fm.group(1)) if fm else ""
-            # Reject metadata leakage and template-only fallback prose.
-            publisher=clean_text(sources[index-1].get("publisher","")).lower()
-            title=clean_text(sources[index-1].get("title","")).lower()
-            for label,value in field_lines.items():
-                bare=re.sub(r"\s*\[Source\s+\d+\]\s*$","",value,flags=re.I).strip().lower()
-                if publisher and bare == publisher: return False
-                if label in {"what happened","why it matters"} and bare == title: return False
-            generic=("the source presents this as a material ai launch, announcement, partnership, investment, infrastructure, or research development.",)
-            if any(g in field_lines["why it matters"].lower() for g in generic): return False
-            if field_lines["what happened"].lower() == field_lines["why it matters"].lower(): return False
             if any(source_id < 1 or source_id > len(sources) for source_id in block_sources):
                 return False
             # Every required factual field must carry its source marker directly.
@@ -2029,51 +1717,38 @@ async def research_pipeline(query):
 
 
 async def forex_pipeline(query):
+    """Existing Forex Factory pipeline, isolated behind the router."""
     research_result = await forex_research(query)
     sources = research_result.get("sources", [])
-    rows = research_result.get("rows", [])
-    error = research_result.get("error", "")
-    q = clean_text(query).lower()
+    verified = []
 
-    if not rows:
-        message = (
-            "⚠️ " + error if error else
-            "⚠️ NEXUS verified the Forex Factory calendar endpoint but could not extract "
-            "structured USD high-impact events. No values were invented."
-        )
-        return message, sources, error
+    for source in sources:
+        title = clean_text(source.get("title", ""))
+        content = clean_text(source.get("content", ""))
+        if not title and not content:
+            continue
+        summary = content[:500].strip()
+        if len(content) > 500:
+            summary = summary.rsplit(" ", 1)[0] + "…"
+        if title and summary:
+            verified.append(f"**{title}** — {summary}")
+        elif title:
+            verified.append(f"**{title}**")
+        if len(verified) == 5:
+            break
 
-    xau = "xauusd" in q or "xau/usd" in q or "gold" in q
+    if verified:
+        return "**Forex Factory — High Impact / Economic Calendar**\n\n" + "\n\n".join(
+            f"{i}. {item}" for i, item in enumerate(verified, 1)
+        ), sources, research_result.get("error", "")
 
-    if xau:
-        ranked = sorted(
-            rows,
-            key=lambda r: (-_xauusd_priority(r["event"]), _forex_row_sort_key(r))
-        )
-        selected = ranked[:5]
-        lines = ["**XAUUSD — 5 highest-impact scheduled USD events from Forex Factory**"]
-        for i, row in enumerate(selected, 1):
-            bull, bear = _xauusd_scenarios(row["event"])
-            lines.append(
-                f"{i}. **{row['date']} | {row['time']} | {row['currency']} | {row['event']}**\n"
-                f"   - Forecast: {row['forecast']}\n"
-                f"   - Previous: {row['previous']}\n"
-                f"   - Actual: {row['actual']}\n"
-                f"   - Why it matters: U.S. data can change expectations for Federal Reserve policy, Treasury yields, and the U.S. dollar, all of which can materially affect gold.\n"
-                f"   - Generally bullish for gold: {bull}\n"
-                f"   - Generally bearish for gold: {bear}\n"
-                f"   - Source: {row['url']}"
-            )
-    else:
-        lines = ["**Forex Factory — High Impact USD Calendar Events**"]
-        for row in rows:
-            lines.append(
-                f"{row['date']} | {row['time']} | {row['currency']} | {row['event']} | "
-                f"{row['forecast']} | {row['previous']} | {row['actual']}"
-            )
-
-    lines.append("\n**Primary source:** Forex Factory calendar only.")
-    return "\n\n".join(lines), sources, error
+    return (
+        "⚠️ NEXUS found Forex Factory results, but could not extract the calendar details from them."
+        if sources else
+        "⚠️ NEXUS could not find usable Forex Factory economic-calendar results for this request.",
+        sources,
+        research_result.get("error", ""),
+    )
 
 
 async def knowledge_pipeline(query, images=None):

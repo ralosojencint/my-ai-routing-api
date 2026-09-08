@@ -788,13 +788,6 @@ def same_event(a, b):
     if ua and ub and ua == ub:
         return True
 
-    # Different publishers may use different URLs while carrying the exact
-    # same headline. Treat an exact normalized headline match as one event.
-    ha = clean_text(a.get("title", "")).lower()
-    hb = clean_text(b.get("title", "")).lower()
-    if ha and hb and ha == hb:
-        return True
-
     ta = _event_title_tokens(a)
     tb = _event_title_tokens(b)
     shared = ta & tb
@@ -1165,143 +1158,46 @@ def should_research(query):
     return any(word in q for word in research_words)
 
 
-def _source_sentences(source, limit=8):
-    """Return substantive sentences from the selected source evidence."""
+def source_grounded_summary(source):
+    """Build a short source-grounded summary from the most relevant sentences."""
+    title = clean_text(source.get("title", ""))
     content = clean_text(source.get("content", ""))
+    if not title:
+        return ""
     if not content:
-        return []
-    sentences = re.split(r"(?<=[.!?])\s+", content)
-    out = []
+        return f"**{title}**"
+
+    title_tokens = set(re.findall(r"[a-z0-9]{3,}", title.lower()))
     boilerplate = {
-        "home", "menu", "login", "subscribe", "advertisement", "copyright",
-        "read more", "share", "sign up", "newsletter", "cookie",
+        "home", "menu", "login", "sign", "subscribe", "recommended",
+        "read", "more", "share", "copyright", "advertisement",
+        "latest", "today", "real", "time", "breaking",
     }
-    for raw in sentences:
-        sentence = clean_text(raw.strip(" -—|•"))
+    sentences = re.split(r"(?<=[.!?])\s+", content)
+    candidates = []
+    for sentence in sentences:
+        sentence = sentence.strip(" -—|•")
         if len(sentence) < 45:
             continue
         low = sentence.lower()
-        if any(term in low for term in boilerplate):
+        if sum(1 for word in boilerplate if word in low) >= 2:
             continue
-        out.append(sentence)
-        if len(out) >= limit:
-            break
-    return out
-
-
-def _publisher_name(source):
-    return clean_text(source.get("publisher", ""))
-
-
-def _candidate_organizations(source):
-    """Extract conservative organization candidates; never treat the publisher as involved."""
-    title = clean_text(source.get("title", ""))
-    content = " ".join(_source_sentences(source, limit=10))
-    text = f"{title}. {content}"
-    publisher = _publisher_name(source).lower()
-    if publisher:
-        text = re.sub(re.escape(publisher), " ", text, flags=re.IGNORECASE)
-    candidates = []
-
-    # Strong patterns: named organizations immediately before common event verbs.
-    patterns = (
-        r"\b([A-Z][A-Za-z0-9&.'’-]*(?:\s+[A-Z][A-Za-z0-9&.'’-]*){0,5})\s+(?:launches|launched|announces|announced|unveils|unveiled|introduces|introduced|releases|released|opens|opened|acquires|acquired|partners|partnered|backs|backed|raises|raised)\b",
-        r"\b(?:by|from|with|between|alongside|according to)\s+([A-Z][A-Za-z0-9&.'’-]*(?:\s+[A-Z][A-Za-z0-9&.'’-]*){0,5})\b",
-    )
-    stop = {
-        "the", "this", "that", "these", "those", "today", "exclusive",
-        "ai", "artificial intelligence", "machine learning", "digital journal",
-        "pr newswire", "axios", "reuters", "business wire", "fana news",
-        "the inertia", "wsj", "national law review",
-    }
-    for pattern in patterns:
-        for match in re.finditer(pattern, text):
-            value = clean_text(match.group(1)).strip(" ,.;:()[]")
-            low = value.lower()
-            if not value or low in stop or low == publisher:
-                continue
-            if len(value) < 2 or len(value) > 90:
-                continue
-            if value not in candidates:
-                candidates.append(value)
-
-    # Preserve explicit, distinctive names from the title when no verb-pattern match exists.
-    if not candidates:
-        for match in re.finditer(r"\b[A-Z][A-Za-z0-9&.'’-]*(?:\s+[A-Z][A-Za-z0-9&.'’-]*){0,3}\b", title):
-            value = clean_text(match.group(0)).strip(" ,.;:()[]")
-            low = value.lower()
-            if low in stop or low == publisher or len(value) < 3:
-                continue
-            if value not in candidates:
-                candidates.append(value)
-
-    return candidates[:4]
-
-
-def _source_significance(source):
-    """Select source-grounded significance without inventing broader impact."""
-    title = clean_text(source.get("title", ""))
-    sentences = _source_sentences(source, limit=12)
-    if not sentences:
-        return "The selected source does not establish broader significance beyond the reported development."
-
-    # Prefer sentences containing consequence/scale language.
-    significance_terms = (
-        "because", "will", "could", "aims", "targets", "expected", "marks",
-        "first", "largest", "new", "alternative", "expands", "enables",
-        "helps", "allows", "designed to", "according to",
-    )
-    scored = []
-    for sentence in sentences:
-        low = sentence.lower()
-        score = sum(2 for term in significance_terms if term in low)
-        score += 1 if any(term in low for term in EVENT_TERMS) else 0
-        scored.append((score, sentence))
-    scored.sort(key=lambda item: item[0], reverse=True)
-    best = scored[0][1]
-    # Prefer a later substantive sentence when available so "why it matters"
-    # does not simply repeat the event summary.
-    consequence_terms = (
-        "because", "influence", "demand", "capacity", "alternative",
-        "efficient", "efficiency", "enables", "allows", "helps",
-        "support", "expands", "target", "aim", "expected",
-    )
-    for sentence in sentences[1:]:
-        low = sentence.lower()
-        if any(term in low for term in consequence_terms) and sentence.lower() != best.lower():
-            best = sentence
-            break
-    if best.lower() == title.lower():
-        return "The selected source reports the development but does not independently establish broader significance."
-    if len(best) > 420:
-        best = best[:417].rsplit(" ", 1)[0] + "…"
-    return best
-
-
-def source_grounded_summary(source):
-    """Build a concise explanation from source evidence, never from title alone."""
-    title = clean_text(source.get("title", ""))
-    if not title:
-        return ""
-    sentences = _source_sentences(source, limit=10)
-    if not sentences:
-        return ""
-
-    title_tokens = set(re.findall(r"[a-z0-9]{3,}", title.lower()))
-    candidates = []
-    for sentence in sentences:
-        low = sentence.lower()
         overlap = len(title_tokens & set(re.findall(r"[a-z0-9]{3,}", low)))
         event_bonus = 12 if any(term in low for term in EVENT_TERMS) else 0
-        score = overlap * 3 + event_bonus - max(0, len(sentence) - 360) / 80
+        score = overlap * 3 + event_bonus - max(0, len(sentence) - 320) / 80
         candidates.append((score, sentence))
-    candidates.sort(key=lambda item: item[0], reverse=True)
-    snippet = candidates[0][1]
+
+    if candidates:
+        candidates.sort(key=lambda item: item[0], reverse=True)
+        snippet = candidates[0][1]
+    else:
+        snippet = content[:320].strip()
+
     if len(snippet) > 420:
         snippet = snippet[:417].rsplit(" ", 1)[0] + "…"
     elif snippet and snippet[-1] not in ".!?…":
         snippet += "…"
-    return snippet
+    return f"**{title}** — {snippet}"
 
 # ============================================================
 # PHASE 4–10 — Real foundations inside the current single-file deployment
@@ -1537,11 +1433,16 @@ other sources, facts, or developments from your own knowledge.
 
 IMPORTANT OUTPUT RULES:
 - Aim for the requested number of distinct developments, but if fewer can be supported by the selected evidence, explicitly say how many were verified and do not invent or duplicate a development.
-- Use exactly ONE source for each verified development when the selected sources agree.
-- If selected sources materially conflict about the same fact, do NOT silently merge, choose, or reconcile them. Explicitly identify the conflict and cite each conflicting source immediately after the claim it supports.
+- Use exactly ONE source for each verified development: the source assigned to that numbered item below.
 - Do not introduce a source that is not in the selected evidence.
-- Every factual claim about a development must be supported by the source cited for that claim.
-- For each verified development, explicitly cover: what happened, the organizations involved, why it matters (only when the source supports that significance), and the publication date.
+- Every factual claim about a development must be supported by its assigned source.
+- For each verified development, use this exact field structure and labels:
+  {N}. **Development title**
+  - What happened: ... [Source N]
+  - Organizations involved: ... [Source N]
+  - Why it matters: ... [Source N]
+  - Publication date: ... [Source N]
+- Do not rename, omit, merge, or reorder those four field labels.
 - Put [Source N] immediately after each sentence or factual claim supported by that source. Do not place a citation only at the end of a paragraph containing multiple unsupported claims.
 - If the source does not support a requested detail, say that the source does not provide that detail instead of guessing.
 - If the user asks for publication dates, use only the PUBLISHED field supplied below.
@@ -1554,14 +1455,21 @@ USER QUESTION:
 SELECTED SOURCE EVIDENCE:
 \n\n""" + "\n\n".join(evidence)
 
-    # Use NEXUS's normal Gemini -> Groq failover so research synthesis never
-    # has a provider-specific failure path.
+    client = gemini_client()
+    if client is None:
+        return ""
+
     try:
-        return await gemini_text(prompt)
-    except Exception as exc:
-        st.session_state.activity.append(
-            f"Research synthesis provider failed: {type(exc).__name__}"
+        response = await asyncio.to_thread(
+            client.models.generate_content,
+            model=MODEL,
+            contents=[prompt],
         )
+        answer = clean_ai_response(getattr(response, "text", "") or "")
+        return answer
+    except Exception:
+        # Research remains usable through the deterministic source summaries
+        # if the synthesis model is unavailable or rate-limited.
         return ""
 
 
@@ -1581,14 +1489,6 @@ def validate_research_output(draft, query, sources):
         return False
 
     lower=text.lower()
-    # Normalize any Markdown heading level for the Sources section. The model
-    # may emit ## Sources or ### Sources; validation must not crash on that.
-    sources_match=re.search(r"(?im)^\s*#{2,6}\s+Sources\s*$", text)
-    if not sources_match:
-        return False
-    body=text[:sources_match.start()]
-    sources_section=text[sources_match.end():]
-
     verified_count=min(requested, len(sources))
     insufficient=verified_count < requested
 
@@ -1599,41 +1499,30 @@ def validate_research_output(draft, query, sources):
 
     if verified_count:
         # Require the evidence fields for each verified development.
+        body=text.split("### Sources",1)[0]
         numbered_blocks=re.split(r"(?m)^\s*(?=(?:[1-9]|10)\.\s)", body)
         for index in range(1, verified_count + 1):
             match=re.search(rf"(?ms)^\s*{index}\.\s+(.*?)(?=^\s*(?:[1-9]|10)\.\s+|\Z)", body)
             if not match:
                 return False
             block=match.group(0).lower()
-            required=("what happened", "organizations involved", "why it matters", "publication date")
-            if not all(label in block for label in required):
+            required_patterns=(
+                r"\bwhat happened\s*:",
+                r"\borganizations?\s+(?:involved|mentioned|identified)\s*:",
+                r"\bwhy it matters\s*:",
+                r"\bpublication date\s*:",
+            )
+            if not all(re.search(pattern, block, flags=re.I) for pattern in required_patterns):
                 return False
             block_sources={int(x) for x in re.findall(r"\[Source\s+(\d+)\]", block, flags=re.I)}
-            if not block_sources:
-                return False
-            # Phase 3 explicitly requires exactly one source per development.
             if block_sources != {index}:
                 return False
-            if any(source_id < 1 or source_id > len(sources) for source_id in block_sources):
-                return False
-            # Every required factual field must carry its source marker directly.
-            for label in required:
-                field_match = re.search(rf"(?im)^\s*-\s*{re.escape(label)}\s*:\s*(.+)$", match.group(0))
-                if not field_match or not re.search(r"\[Source\s+" + str(index) + r"\]\s*$", field_match.group(1), flags=re.I):
-                    return False
 
-    # The Sources section may contain only sources actually cited in the
-    # verified-development blocks, exactly once and in first-citation order.
+    # The Sources section may contain only the sources actually cited, once
+    # each, and in the same order as the verified developments.
+    sources_section=text.split("### Sources",1)[1]
     listed_numbers=[int(x) for x in re.findall(r"(?m)^\s*(\d+)\.\s", sources_section)]
-    cited_numbers=[]
-    for match in re.finditer(r"(?ms)^\s*(?:[1-9]|10)\.\s+(.*?)(?=^\s*(?:[1-9]|10)\.\s+|\Z)", body):
-        for source_id in re.findall(r"\[Source\s+(\d+)\]", match.group(1), flags=re.I):
-            source_id=int(source_id)
-            if source_id not in cited_numbers:
-                cited_numbers.append(source_id)
-    if listed_numbers != cited_numbers:
-        return False
-    if len(listed_numbers) != len(set(listed_numbers)):
+    if listed_numbers != list(range(1, verified_count + 1)):
         return False
 
     return True
@@ -1642,17 +1531,8 @@ def validate_research_output(draft, query, sources):
 def render_exact_research_output(query,sources):
     """Produce an exact, one-source-per-development answer without model drift."""
     n=requested_development_count(query,default=len(sources)); selected=sources[:n]
-    # Graceful insufficiency: render every independently verified source rather
-    # than failing and hiding the verified count behind a generic error.
-    if not selected:
-        return ""
+    if len(selected)<n: return ""
     items=[]; source_lines=[]
-    intro = ""
-    if len(selected) < n:
-        intro = (
-            f"Only {len(selected)} independently verified development(s) were available; "
-            f"{n} requested. NEXUS will not invent or duplicate another development."
-        )
     for i,src in enumerate(selected,1):
         title=clean_text(src.get("title",""))
         summary=source_grounded_summary(src)
@@ -1663,15 +1543,12 @@ def render_exact_research_output(query,sources):
         items.append(
             f"{i}. **{title}**\n"
             f"- What happened: {summary} [Source {i}]\n"
-            f"- Organizations involved: {(', '.join(_candidate_organizations(src)) if _candidate_organizations(src) else 'The selected source does not identify an organization involved beyond the entities named in the headline.')} [Source {i}]\n"
-            f"- Why it matters: {_source_significance(src)} [Source {i}]\n"
+            f"- Organizations involved: The source does not provide enough structured evidence to reliably extract this detail. [Source {i}]\n"
+            f"- Why it matters: The source does not independently establish broader significance. [Source {i}]\n"
             f"- Publication date: {published_text} [Source {i}]"
         )
         source_lines.append(f"{i}. {title} — {url}")
-    body = "\n\n".join(items)
-    if intro:
-        body = intro + "\n\n" + body
-    return body + "\n\n### Sources\n" + "\n".join(source_lines)
+    return "\n\n".join(items)+"\n\n### Sources\n"+"\n".join(source_lines)
 
 
 async def research_pipeline(query):
@@ -1685,34 +1562,19 @@ async def research_pipeline(query):
         # synthesis layer first. The deterministic renderer remains only as a
         # fallback when the synthesis model is unavailable.
         draft=await research_synthesis(query,sources) if sources else ""
-        if draft:
-            try:
-                valid_output=validate_research_output(draft, query, sources)
-            except Exception as exc:
-                valid_output=False
-                st.session_state.activity.append(
-                    f"Research output validation error: {type(exc).__name__}"
-                )
-            if valid_output:
-                st.session_state.activity.append("Evidence-integrity research output contract passed")
-                return draft,sources,research_result.get("error","")
+        if draft and validate_research_output(draft, query, sources):
+            st.session_state.activity.append("Evidence-integrity research output contract passed")
+            return draft,sources,research_result.get("error","")
         if draft:
             st.session_state.activity.append("Research synthesis failed output validation; using deterministic fallback")
-            draft = ""
     else:
         draft=await research_synthesis(query,sources) if sources else ""
     if draft:
         st.session_state.activity.append("Research synthesis completed")
     if not draft and sources and n<=len(sources):
-        fallback = render_exact_research_output(query, sources)
-        if fallback and validate_research_output(fallback, query, sources):
-            draft = fallback
-            st.session_state.activity.append("Deterministic research fallback passed output contract")
-        else:
-            draft = ""
-            st.session_state.activity.append("Deterministic research fallback failed output contract")
+        draft=render_exact_research_output(query,sources)
     if not draft:
-        draft="⚠️ NEXUS could not produce a research answer that satisfied the evidence-integrity contract."
+        draft="⚠️ NEXUS could not verify enough current AI information from today's research results."
     return draft,sources,research_result.get("error","")
 
 

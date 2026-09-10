@@ -1531,8 +1531,17 @@ def validate_research_output(draft, query, sources):
 def render_exact_research_output(query,sources):
     """Produce an exact, one-source-per-development answer without model drift."""
     n=requested_development_count(query,default=len(sources)); selected=sources[:n]
-    if len(selected)<n: return ""
+    # Graceful insufficiency: render every independently verified source rather
+    # than hiding verified evidence behind a generic failure message.
+    if not selected:
+        return ""
     items=[]; source_lines=[]
+    intro = ""
+    if len(selected) < n:
+        intro = (
+            f"Only {len(selected)} independently verified development(s) were available; "
+            f"{n} requested. NEXUS will not invent or duplicate another development."
+        )
     for i,src in enumerate(selected,1):
         title=clean_text(src.get("title",""))
         summary=source_grounded_summary(src)
@@ -1548,7 +1557,10 @@ def render_exact_research_output(query,sources):
             f"- Publication date: {published_text} [Source {i}]"
         )
         source_lines.append(f"{i}. {title} — {url}")
-    return "\n\n".join(items)+"\n\n### Sources\n"+"\n".join(source_lines)
+    body = "\n\n".join(items)
+    if intro:
+        body = intro + "\n\n" + body
+    return body + "\n\n### Sources\n" + "\n".join(source_lines)
 
 
 async def research_pipeline(query):
@@ -1571,7 +1583,7 @@ async def research_pipeline(query):
         draft=await research_synthesis(query,sources) if sources else ""
     if draft:
         st.session_state.activity.append("Research synthesis completed")
-    if not draft and sources and n<=len(sources):
+    if not draft and sources:
         draft=render_exact_research_output(query,sources)
     if not draft:
         draft="⚠️ NEXUS could not verify enough current AI information from today's research results."

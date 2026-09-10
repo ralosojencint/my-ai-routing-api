@@ -1473,6 +1473,25 @@ SELECTED SOURCE EVIDENCE:
         return ""
 
 
+def normalize_research_numbering(draft, query):
+    """Normalize repeated top-level development numbers without touching Sources."""
+    if not draft:
+        return draft
+    requested = requested_development_count(query, default=0)
+    if requested <= 0:
+        return draft
+    parts = re.split(r"(?im)^(\s*)#{2,6}\s+Sources\s*$", draft, maxsplit=1)
+    body = parts[0]
+    suffix = ("\n\n### Sources" + parts[2]) if len(parts) == 3 else ""
+    counter = 0
+    pattern = re.compile(r"(?m)^(\s*)1\.\s+(?=\*\*)")
+    def repl(match):
+        nonlocal counter
+        counter += 1
+        return f"{match.group(1)}{counter}. " if counter <= requested else match.group(0)
+    return pattern.sub(repl, body) + suffix
+
+
 def validate_research_output(draft, query, sources):
     """Validate the minimum Phase 3 evidence-integrity contract."""
     text=clean_ai_response(draft)
@@ -1531,17 +1550,8 @@ def validate_research_output(draft, query, sources):
 def render_exact_research_output(query,sources):
     """Produce an exact, one-source-per-development answer without model drift."""
     n=requested_development_count(query,default=len(sources)); selected=sources[:n]
-    # Graceful insufficiency: render every independently verified source rather
-    # than hiding verified evidence behind a generic failure message.
-    if not selected:
-        return ""
+    if len(selected)<n: return ""
     items=[]; source_lines=[]
-    intro = ""
-    if len(selected) < n:
-        intro = (
-            f"Only {len(selected)} independently verified development(s) were available; "
-            f"{n} requested. NEXUS will not invent or duplicate another development."
-        )
     for i,src in enumerate(selected,1):
         title=clean_text(src.get("title",""))
         summary=source_grounded_summary(src)
@@ -1557,10 +1567,7 @@ def render_exact_research_output(query,sources):
             f"- Publication date: {published_text} [Source {i}]"
         )
         source_lines.append(f"{i}. {title} — {url}")
-    body = "\n\n".join(items)
-    if intro:
-        body = intro + "\n\n" + body
-    return body + "\n\n### Sources\n" + "\n".join(source_lines)
+    return "\n\n".join(items)+"\n\n### Sources\n"+"\n".join(source_lines)
 
 
 async def research_pipeline(query):
@@ -1574,6 +1581,8 @@ async def research_pipeline(query):
         # synthesis layer first. The deterministic renderer remains only as a
         # fallback when the synthesis model is unavailable.
         draft=await research_synthesis(query,sources) if sources else ""
+        if draft:
+            draft=normalize_research_numbering(draft, query)
         if draft and validate_research_output(draft, query, sources):
             st.session_state.activity.append("Evidence-integrity research output contract passed")
             return draft,sources,research_result.get("error","")
@@ -1583,8 +1592,11 @@ async def research_pipeline(query):
         draft=await research_synthesis(query,sources) if sources else ""
     if draft:
         st.session_state.activity.append("Research synthesis completed")
-    if not draft and sources:
+    if not draft and sources and n<=len(sources):
         draft=render_exact_research_output(query,sources)
+        draft=normalize_research_numbering(draft, query)
+        if draft and not validate_research_output(draft, query, sources):
+            draft=""
     if not draft:
         draft="⚠️ NEXUS could not verify enough current AI information from today's research results."
     return draft,sources,research_result.get("error","")

@@ -1437,7 +1437,7 @@ IMPORTANT OUTPUT RULES:
 - Do not introduce a source that is not in the selected evidence.
 - Every factual claim about a development must be supported by its assigned source.
 - For each verified development, use this exact field structure and labels:
-  {N}. **Development title**
+  {{N}}. **Development title**
   - What happened: ... [Source N]
   - Organizations involved: ... [Source N]
   - Why it matters: ... [Source N]

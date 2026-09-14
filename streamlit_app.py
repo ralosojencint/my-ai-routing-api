@@ -1600,6 +1600,8 @@ async def research_pipeline(query):
             return draft,sources,research_result.get("error","")
         if draft:
             st.session_state.activity.append("Research synthesis failed output validation; using deterministic fallback")
+            # Discard the invalid model draft so the deterministic renderer actually runs.
+            draft=""
     else:
         draft=await research_synthesis(query,sources) if sources else ""
     if draft:

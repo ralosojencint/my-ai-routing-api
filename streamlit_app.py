@@ -1600,15 +1600,27 @@ async def research_pipeline(query):
             return draft,sources,research_result.get("error","")
         if draft:
             st.session_state.activity.append("Research synthesis failed output validation; using deterministic fallback")
-            # Discard the invalid model draft so the deterministic renderer actually runs.
-            draft=""
+
+        # Exact-contract requests must never return an unvalidated model draft.
+        # Render the final answer deterministically, validate it, and return it
+        # directly so no later response-processing path can alter its numbering.
+        if sources and n <= len(sources):
+            fallback = render_exact_research_output(query, sources)
+            if fallback and validate_research_output(fallback, query, sources):
+                st.session_state.activity.append("Deterministic fallback validation passed")
+                return fallback, sources, research_result.get("error", "")
+            st.session_state.activity.append("Deterministic fallback validation failed")
+        return (
+            "⚠️ NEXUS could not verify enough current AI information from today's research results.",
+            sources,
+            research_result.get("error", ""),
+        )
     else:
         draft=await research_synthesis(query,sources) if sources else ""
     if draft:
         st.session_state.activity.append("Research synthesis completed")
     if not draft and sources and n<=len(sources):
         draft=render_exact_research_output(query,sources)
-        draft=normalize_research_numbering(draft, query)
         if draft and not validate_research_output(draft, query, sources):
             draft=""
     if not draft:

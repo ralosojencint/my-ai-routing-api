@@ -1560,6 +1560,82 @@ def validate_research_output(draft, query, sources):
     return True
 
 
+def _source_sentences(source):
+    """Return clean, reasonably informative sentences from one selected source."""
+    content=clean_text(source.get("content",""))
+    if not content:
+        return []
+    parts=re.split(r"(?<=[.!?])\s+", content)
+    return [x.strip(" -—|•") for x in parts if len(x.strip(" -—|•")) >= 35]
+
+
+def _organization_names(source):
+    """Extract conservative organization names from source title/body text."""
+    title=clean_text(source.get("title",""))
+    content=clean_text(source.get("content",""))
+    text=f"{title}. {content}"
+    known=(
+        "OpenAI","Anthropic","Google DeepMind","DeepMind","Google","Microsoft",
+        "Meta AI","Meta","NVIDIA","Nvidia","Apple","Amazon","AWS","xAI",
+        "Mistral AI","DeepSeek","Hugging Face","Huawei","XPENG","XPeng",
+        "BrainChip","IBM","Intel","AMD","Qualcomm","Samsung","TSMC",
+        "Tesla","ByteDance","Baidu","Alibaba","Tencent","Oracle","Salesforce",
+        "Accenture","Boston Dynamics","Figure AI","Agility Robotics","Toyota",
+        "Waymo","Scale AI","Cohere","Perplexity","Databricks"
+    )
+    found=[]
+    low=text.lower()
+    for name in known:
+        if name.lower() in low and name not in found:
+            found.append(name)
+    return found[:5]
+
+
+def _source_grounded_significance(source):
+    """Select a cautious significance sentence already present in the source."""
+    sentences=_source_sentences(source)
+    if not sentences:
+        return "The source reports the development but does not explicitly state why it matters."
+    terms=(
+        "matter", "significant", "important", "market", "industry", "impact",
+        "competition", "challenge", "growth", "expansion", "first", "largest",
+        "milestone", "enabl", "allow", "accelerat", "strategy", "because",
+        "revenue", "customers", "deployment", "adoption", "infrastructure"
+    )
+    ranked=[]
+    for sentence in sentences:
+        low=sentence.lower()
+        score=sum(3 for term in terms if term in low)
+        if any(term in low for term in EVENT_TERMS):
+            score += 1
+        ranked.append((score,sentence))
+    ranked.sort(key=lambda x:(x[0],-len(x[1])))
+    best=ranked[-1][1]
+    if len(best)>420:
+        best=best[:417].rsplit(" ",1)[0]+"…"
+    return best
+
+
+def source_grounded_fields(source):
+    """Build all required fallback fields using only one source's evidence."""
+    title=clean_text(source.get("title",""))
+    summary=source_grounded_summary(source)
+    if summary.startswith(f"**{title}** — "):
+        summary=summary.split(" — ",1)[1]
+    elif summary.startswith(f"**{title}**"):
+        summary=summary[len(f"**{title}**"):].strip(" —")
+    organizations=_organization_names(source)
+    if organizations:
+        if len(organizations)==1:
+            org_text=f"The source identifies {organizations[0]}."
+        else:
+            org_text="The source identifies " + ", ".join(organizations[:-1]) + " and " + organizations[-1] + "."
+    else:
+        org_text="No additional organization names could be reliably extracted from this source."
+    significance=_source_grounded_significance(source)
+    return summary,org_text,significance
+
+
 def render_exact_research_output(query,sources):
     """Produce an exact, one-source-per-development answer without model drift."""
     n=requested_development_count(query,default=len(sources)); selected=sources[:n]
@@ -1576,16 +1652,16 @@ def render_exact_research_output(query,sources):
         )
     for i,src in enumerate(selected,1):
         title=clean_text(src.get("title",""))
-        summary=source_grounded_summary(src)
-        url=str(src.get("url","")).strip()
+        summary,organizations,significance=source_grounded_fields(src)
+        url=str(src.get("url"," ")).strip()
         published=source_date(src)
         if not title or not summary or not url: return ""
         published_text=published.isoformat() if published else "not provided by the source"
         items.append(
             f"{i}. **{title}**\n"
             f"- What happened: {summary} [Source {i}]\n"
-            f"- Organizations involved: The source does not provide enough structured evidence to reliably extract this detail. [Source {i}]\n"
-            f"- Why it matters: The source does not independently establish broader significance. [Source {i}]\n"
+            f"- Organizations involved: {organizations} [Source {i}]\n"
+            f"- Why it matters: {significance} [Source {i}]\n"
             f"- Publication date: {published_text} [Source {i}]"
         )
         source_lines.append(f"{i}. {title} — {url}")

@@ -1474,21 +1474,31 @@ SELECTED SOURCE EVIDENCE:
 
 
 def normalize_research_numbering(draft, query):
-    """Normalize repeated top-level development numbers without touching Sources."""
+    """Normalize every top-level development heading to 1..N without touching Sources."""
     if not draft:
         return draft
     requested = requested_development_count(query, default=0)
     if requested <= 0:
         return draft
+
+    # Split before the Sources section so source-list numbering is never changed.
     parts = re.split(r"(?im)^(\s*)#{2,6}\s+Sources\s*$", draft, maxsplit=1)
     body = parts[0]
     suffix = ("\n\n### Sources" + parts[2]) if len(parts) == 3 else ""
+
     counter = 0
-    pattern = re.compile(r"(?m)^(\s*)1\.\s+(?=\*\*)")
+    # Gemini can emit 1., 1., 1.; 1., 2., 1.; or other malformed sequences.
+    # Treat every bold top-level development heading as one development and
+    # renumber the first requested headings deterministically.
+    pattern = re.compile(r"(?m)^(\s*)\d+\.\s+(?=\*\*)")
+
     def repl(match):
         nonlocal counter
         counter += 1
-        return f"{match.group(1)}{counter}. " if counter <= requested else match.group(0)
+        if counter <= requested:
+            return f"{match.group(1)}{counter}. "
+        return match.group(0)
+
     return pattern.sub(repl, body) + suffix
 
 
@@ -1517,8 +1527,11 @@ def validate_research_output(draft, query, sources):
         return False
 
     if verified_count:
-        # Require the evidence fields for each verified development.
+        # Require exactly the sequential top-level development headings 1..N.
         body=text.split("### Sources",1)[0]
+        top_level_numbers=[int(x) for x in re.findall(r"(?m)^\s*(\d+)\.\s+(?=\*\*)", body)]
+        if top_level_numbers != list(range(1, verified_count + 1)):
+            return False
         numbered_blocks=re.split(r"(?m)^\s*(?=(?:[1-9]|10)\.\s)", body)
         for index in range(1, verified_count + 1):
             match=re.search(rf"(?ms)^\s*{index}\.\s+(.*?)(?=^\s*(?:[1-9]|10)\.\s+|\Z)", body)

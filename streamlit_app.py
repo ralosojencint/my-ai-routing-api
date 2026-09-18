@@ -795,6 +795,22 @@ def same_event(a, b):
         return False
 
     anchors = shared & EVENT_ANCHOR_TERMS
+
+    # Cross-publisher headlines often preserve a distinctive product/model
+    # identifier even when the wording is otherwise very different. For
+    # example, both "Huawei announces Ascend 960DT" and "Huawei plans Q1 2027
+    # launch of new Ascend 960DT" contain the same company plus the same
+    # alphanumeric product identifier. Treat that combination as a strong
+    # underlying-event signal. Requiring BOTH prevents unrelated stories from
+    # the same company from being collapsed merely because the company name
+    # is shared.
+    shared_identifiers = {
+        token for token in shared
+        if re.search(r"\d", token) and len(token) >= 4
+    }
+    if shared_identifiers:
+        return True
+
     if not anchors:
         return False
 

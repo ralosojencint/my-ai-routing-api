@@ -1560,6 +1560,66 @@ def validate_research_output(draft, query, sources):
     return True
 
 
+def _grounding_terms(text):
+    """Return distinctive lexical terms useful for source-to-development matching."""
+    stopwords={
+        "about","after","again","against","among","announced","announcement",
+        "because","being","between","could","development","developments","early",
+        "from","happened","have","into","launch","launches","latest","matter",
+        "next","new","plans","publication","report","research","said","source",
+        "that","their","these","this","today","what","when","will","with",
+        "world","year","years","organization","organizations","involved","artificial",
+        "intelligence","related","health","current","three","three","million","billion",
+    }
+    return {
+        token for token in re.findall(r"[a-z0-9][a-z0-9'-]{2,}", clean_text(text).lower())
+        if token not in stopwords and len(token) >= 4
+    }
+
+
+def validate_source_grounding(draft, sources, query=""):
+    """Check that each numbered development is lexically grounded in its assigned source.
+
+    This is intentionally conservative: it does not try to prove every claim true, but it
+    rejects an obvious source-swapping error such as an Arcee AI development citing a Huawei
+    article. The synthesis layer remains responsible for semantic claim selection.
+    """
+    text=clean_ai_response(draft)
+    if not text or not sources:
+        return False
+    requested=min(requested_development_count(query, default=len(sources)), len(sources))
+    if requested <= 0:
+        return False
+    body=text.split("### Sources",1)[0]
+    for index in range(1, requested + 1):
+        match=re.search(
+            rf"(?ms)^\s*{index}\.\s+(.*?)(?=^\s*(?:[1-9]|10)\.\s+|\Z)",
+            body,
+        )
+        if not match:
+            return False
+        block=match.group(1)
+        heading=block.split("\n",1)[0]
+        development_terms=_grounding_terms(heading)
+        source=sources[index-1]
+        source_text=" ".join([
+            clean_text(source.get("title","")),
+            clean_text(source.get("content","")),
+        ])
+        source_terms=_grounding_terms(source_text)
+        overlap=development_terms & source_terms
+        # A development title should share at least two distinctive terms with its
+        # assigned source, or one distinctive term when the title contains a single
+        # meaningful named entity (e.g. a company/product name).
+        if len(development_terms) >= 2 and len(overlap) < 2:
+            return False
+        if len(development_terms) == 1 and not overlap:
+            return False
+        if not development_terms:
+            return False
+    return True
+
+
 def _source_sentences(source):
     """Return clean, reasonably informative sentences from one selected source."""
     content=clean_text(source.get("content",""))
@@ -1685,8 +1745,11 @@ async def research_pipeline(query):
         if draft:
             draft=normalize_research_numbering(draft, query)
         if draft and validate_research_output(draft, query, sources):
-            st.session_state.activity.append("Evidence-integrity research output contract passed")
-            return draft,sources,research_result.get("error","")
+            if validate_source_grounding(draft, sources, query):
+                st.session_state.activity.append("Evidence-integrity research output contract passed")
+                st.session_state.activity.append("Source-to-development grounding check passed")
+                return draft,sources,research_result.get("error","")
+            st.session_state.activity.append("Source-to-development grounding check failed; using deterministic fallback")
         if draft:
             st.session_state.activity.append("Research synthesis failed output validation; using deterministic fallback")
 
@@ -1696,8 +1759,11 @@ async def research_pipeline(query):
         if sources and n <= len(sources):
             fallback = render_exact_research_output(query, sources)
             if fallback and validate_research_output(fallback, query, sources):
-                st.session_state.activity.append("Deterministic fallback validation passed")
-                return fallback, sources, research_result.get("error", "")
+                if validate_source_grounding(fallback, sources, query):
+                    st.session_state.activity.append("Deterministic fallback validation passed")
+                    st.session_state.activity.append("Source-to-development grounding check passed")
+                    return fallback, sources, research_result.get("error", "")
+                st.session_state.activity.append("Deterministic fallback grounding check failed")
             st.session_state.activity.append("Deterministic fallback validation failed")
         return (
             "⚠️ NEXUS could not verify enough current AI information from today's research results.",

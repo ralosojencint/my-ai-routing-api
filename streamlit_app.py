@@ -1566,6 +1566,37 @@ def validate_research_output(draft, query, sources):
             if block_sources != {index}:
                 return False
 
+            # Semantic field check: the "Why it matters" field must add a
+            # significance/implication rather than merely repeating "What
+            # happened". This catches structurally valid but substantively
+            # empty fallbacks such as repeating the launch date as the reason
+            # it matters.
+            what_match=re.search(r"(?is)\bwhat happened\s*:\s*(.*?)(?=\n\s*-\s*organizations?\s+(?:involved|mentioned|identified)\s*:)", block)
+            why_match=re.search(r"(?is)\bwhy it matters\s*:\s*(.*?)(?=\n\s*-\s*publication date\s*:)", block)
+            if not what_match or not why_match:
+                return False
+            what_tokens=_grounding_terms(what_match.group(1))
+            why_text=why_match.group(1)
+            why_tokens=_grounding_terms(why_text)
+            if not why_tokens:
+                return False
+            overlap_ratio=len(what_tokens & why_tokens) / max(1, len(what_tokens | why_tokens))
+            significance_terms=(
+                "matter", "significant", "important", "impact", "competition",
+                "competitive", "market", "industry", "customers", "adoption",
+                "deployment", "strategy", "milestone", "enables", "enable",
+                "allows", "allow", "accelerates", "accelerate", "expands",
+                "growth", "revenue", "infrastructure", "security", "oversight",
+                "trust", "challenge", "capability", "capacity", "global"
+            )
+            has_significance_signal=any(term in why_text.lower() for term in significance_terms)
+            # A near-copy of the event description is not an explanation of
+            # significance, even if it shares many source-grounded terms.
+            if overlap_ratio >= 0.72 and not has_significance_signal:
+                return False
+            if overlap_ratio >= 0.90:
+                return False
+
     # The Sources section may contain only the sources actually cited, once
     # each, and in the same order as the verified developments.
     sources_section=text.split("### Sources",1)[1]
@@ -1668,25 +1699,35 @@ def _organization_names(source):
 
 
 def _source_grounded_significance(source):
-    """Select a cautious significance sentence already present in the source."""
+    """Select a source sentence that adds significance beyond the event summary."""
     sentences=_source_sentences(source)
     if not sentences:
         return "The source reports the development but does not explicitly state why it matters."
+    summary=source_grounded_summary(source)
+    summary_tokens=_grounding_terms(summary)
     terms=(
         "matter", "significant", "important", "market", "industry", "impact",
-        "competition", "challenge", "growth", "expansion", "first", "largest",
-        "milestone", "enabl", "allow", "accelerat", "strategy", "because",
-        "revenue", "customers", "deployment", "adoption", "infrastructure"
+        "competition", "competitive", "challenge", "growth", "expansion",
+        "first", "largest", "milestone", "enabl", "allow", "accelerat",
+        "strategy", "because", "revenue", "customers", "deployment",
+        "adoption", "infrastructure", "security", "oversight", "trust",
+        "capability", "capacity", "global"
     )
     ranked=[]
     for sentence in sentences:
         low=sentence.lower()
+        sentence_tokens=_grounding_terms(sentence)
         score=sum(3 for term in terms if term in low)
         if any(term in low for term in EVENT_TERMS):
             score += 1
+        # Prefer a sentence that contributes information not already present
+        # in the deterministic "What happened" summary.
+        novelty=len(sentence_tokens - summary_tokens)
+        repetition=len(sentence_tokens & summary_tokens)
+        score += novelty * 1.5 - repetition * 0.5
         ranked.append((score,sentence))
-    ranked.sort(key=lambda x:(x[0],-len(x[1])))
-    best=ranked[-1][1]
+    ranked.sort(key=lambda x:(x[0],-len(x[1])), reverse=True)
+    best=ranked[0][1]
     if len(best)>420:
         best=best[:417].rsplit(" ",1)[0]+"…"
     return best

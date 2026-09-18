@@ -1707,25 +1707,40 @@ def _source_grounded_significance(source):
     summary_tokens=_grounding_terms(summary)
     terms=(
         "matter", "significant", "important", "market", "industry", "impact",
-        "competition", "competitive", "challenge", "growth", "expansion",
-        "first", "largest", "milestone", "enabl", "allow", "accelerat",
-        "strategy", "because", "revenue", "customers", "deployment",
-        "adoption", "infrastructure", "security", "oversight", "trust",
-        "capability", "capacity", "global"
+        "competition", "compete", "competitive", "replace", "challenge",
+        "growth", "expansion", "first", "largest", "milestone", "enabl",
+        "allow", "accelerat", "strategy", "because", "revenue", "customers",
+        "deployment", "adoption", "infrastructure", "security", "oversight",
+        "trust", "capability", "capacity", "global", "foundation", "address",
+        "demand", "risk", "threat"
     )
     ranked=[]
+    junk_patterns=(
+        r"\bplaylist\b", r"\bimage\s+\d+\b", r"\bduration\s*:",
+        r"\bunmute\b", r"\bad\s+0:?\d*\b", r"\bvideo\b.*\bplaylist\b"
+    )
     for sentence in sentences:
         low=sentence.lower()
+        if any(re.search(pattern, low) for pattern in junk_patterns):
+            continue
         sentence_tokens=_grounding_terms(sentence)
-        score=sum(3 for term in terms if term in low)
+        signal=sum(3 for term in terms if term in low)
+        # A significance sentence should contain an actual implication signal.
+        # Event-only sentences are still useful for "What happened", but not here.
+        if signal == 0:
+            continue
+        score=signal
         if any(term in low for term in EVENT_TERMS):
             score += 1
-        # Prefer a sentence that contributes information not already present
-        # in the deterministic "What happened" summary.
         novelty=len(sentence_tokens - summary_tokens)
         repetition=len(sentence_tokens & summary_tokens)
         score += novelty * 1.5 - repetition * 0.5
         ranked.append((score,sentence))
+    if not ranked:
+        return (
+            "The source does not explicitly explain the broader significance of this development; "
+            "no additional significance is inferred beyond the reported facts."
+        )
     ranked.sort(key=lambda x:(x[0],-len(x[1])), reverse=True)
     best=ranked[0][1]
     if len(best)>420:

@@ -1743,6 +1743,17 @@ def _source_grounded_significance(source):
         )
     ranked.sort(key=lambda x:(x[0],-len(x[1])), reverse=True)
     best=ranked[0][1]
+    implication_markers=(
+        "aiming to", "to compete", "to replace", "which means", "meaning",
+        "would allow", "will allow", "enables", "enable", "helps", "helping",
+        "designed to", "intended to", "reflects", "underscores", "highlights",
+        "expands", "strengthens", "addresses", "because", "market", "industry",
+        "customers", "adoption", "security", "risk", "threat"
+    )
+    explicit=[x for x in ranked if any(m in x[1].lower() for m in implication_markers)]
+    if explicit:
+        explicit.sort(key=lambda x:(x[0],-len(x[1])), reverse=True)
+        best=explicit[0][1]
     if len(best)>420:
         best=best[:417].rsplit(" ",1)[0]+"…"
     return best

@@ -843,15 +843,52 @@ def source_outlet_key(source):
     return source_domain(source.get("url", ""))
 
 
+def research_source_quality_score(source):
+    """Score whether one source can support all required research fields."""
+    title = clean_text(source.get("title", ""))
+    content = clean_text(source.get("content", ""))
+    domain = source_domain(source.get("url", ""))
+    published = source_date(source)
+    low = f"{title} {content}".lower()
+    score = 0
+    if domain in PRIMARY_DOMAINS:
+        score += 30
+    elif domain in SECONDARY_TRUSTED_DOMAINS:
+        score += 24
+    elif domain in {"instagram.com", "facebook.com", "tiktok.com", "x.com", "twitter.com", "youtube.com"}:
+        score -= 35
+    else:
+        score += 5
+    if published is not None:
+        score += 10
+    score += min(len(content), 2400) // 120
+    significance_terms = (
+        "impact", "matters", "important", "significant", "competition",
+        "compete", "market", "industry", "strategy", "adoption", "deployment",
+        "customers", "security", "risk", "threat", "growth", "expansion",
+        "enables", "enable", "allows", "accelerates", "infrastructure",
+        "milestone", "challenge", "capacity", "global", "revenue",
+    )
+    score += min(24, sum(1 for term in significance_terms if term in low) * 2)
+    if len(content) < 120:
+        score -= 20
+    if any(term in low for term in ("instagram reel", "reel:", "tiktok", "follow us")):
+        score -= 20
+    return score
+
+
 def select_distinct_sources(sources, limit=5):
-    """Select the requested number of distinct events with outlet diversity."""
+    """Select distinct, evidence-rich events with outlet diversity."""
     selected = []
     seen_outlets = {}
-    for source in sources:
+    candidates = sorted(
+        list(enumerate(sources)),
+        key=lambda item: (research_source_quality_score(item[1]), -item[0]),
+        reverse=True,
+    )
+    for _, source in candidates:
         if any(same_event(source, old) for old in selected):
             continue
-        # Limit repeated articles from the same actual publisher, not from the
-        # Google News transport domain used by the RSS fallback.
         outlet = source_outlet_key(source)
         if outlet and seen_outlets.get(outlet, 0) >= 2:
             continue
@@ -861,6 +898,7 @@ def select_distinct_sources(sources, limit=5):
         if len(selected) >= limit:
             break
     return selected[:max(0, limit)]
+
 
 
 def requested_development_count(query, default=5):

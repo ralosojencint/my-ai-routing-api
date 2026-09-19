@@ -2011,7 +2011,7 @@ st.markdown("""
     padding-bottom: 5rem;
 }
 
-.nexus-logo {
+.QUASFLOW-logo {
     font-size: 31px;
     font-weight: 800;
     letter-spacing: -1.5px;

@@ -843,63 +843,69 @@ def source_outlet_key(source):
     return source_domain(source.get("url", ""))
 
 
-def research_source_quality_score(source):
-    """Score whether one source can support all required research fields."""
-    title = clean_text(source.get("title", ""))
-    content = clean_text(source.get("content", ""))
-    domain = source_domain(source.get("url", ""))
-    published = source_date(source)
-    low = f"{title} {content}".lower()
-    score = 0
-    if domain in PRIMARY_DOMAINS:
-        score += 30
-    elif domain in SECONDARY_TRUSTED_DOMAINS:
-        score += 24
-    elif domain in {"instagram.com", "facebook.com", "tiktok.com", "x.com", "twitter.com", "youtube.com"}:
-        score -= 35
-    else:
-        score += 5
-    if published is not None:
-        score += 10
-    score += min(len(content), 2400) // 120
-    significance_terms = (
-        "impact", "matters", "important", "significant", "competition",
-        "compete", "market", "industry", "strategy", "adoption", "deployment",
-        "customers", "security", "risk", "threat", "growth", "expansion",
-        "enables", "enable", "allows", "accelerates", "infrastructure",
-        "milestone", "challenge", "capacity", "global", "revenue",
-    )
-    score += min(24, sum(1 for term in significance_terms if term in low) * 2)
-    if len(content) < 120:
-        score -= 20
-    if any(term in low for term in ("instagram reel", "reel:", "tiktok", "follow us")):
-        score -= 20
-    return score
-
-
 def select_distinct_sources(sources, limit=5):
-    """Select distinct, evidence-rich events with outlet diversity."""
+    """Select distinct events, preferring stronger evidence when available."""
     selected = []
     seen_outlets = {}
-    candidates = sorted(
-        list(enumerate(sources)),
-        key=lambda item: (research_source_quality_score(item[1]), -item[0]),
+
+    def quality(source):
+        title = clean_text(source.get("title", ""))
+        content = clean_text(source.get("content", ""))
+        domain = source_domain(source.get("url", "")).lower()
+        score = 0
+
+        # Prefer direct/established reporting and penalize thin social sources.
+        if domain in PRIMARY_DOMAINS:
+            score += 30
+        elif domain in SECONDARY_TRUSTED_DOMAINS:
+            score += 20
+        elif domain in {"instagram.com", "facebook.com", "tiktok.com", "x.com", "twitter.com"}:
+            score -= 30
+
+        score += min(len(content) // 100, 20)
+
+        significance_terms = (
+            "impact", "important", "significant", "market", "industry",
+            "competition", "strategy", "adoption", "deployment", "security",
+            "risk", "growth", "expansion", "milestone", "customers",
+            "revenue", "infrastructure", "capability", "capacity",
+        )
+        low = f"{title} {content}".lower()
+        score += sum(2 for term in significance_terms if term in low)
+
+        if len(content) < 120:
+            score -= 20
+
+        return score
+
+    # Keep the existing research ranking as the primary signal and use
+    # quality only to prefer stronger evidence among candidates.
+    ranked = sorted(
+        enumerate(sources),
+        key=lambda item: (
+            research_score(item[1], date.today()),
+            quality(item[1]),
+            -item[0],
+        ),
         reverse=True,
     )
-    for _, source in candidates:
+
+    for _, source in ranked:
         if any(same_event(source, old) for old in selected):
             continue
+
         outlet = source_outlet_key(source)
         if outlet and seen_outlets.get(outlet, 0) >= 2:
             continue
+
         selected.append(source)
         if outlet:
             seen_outlets[outlet] = seen_outlets.get(outlet, 0) + 1
+
         if len(selected) >= limit:
             break
+
     return selected[:max(0, limit)]
-
-
 
 def requested_development_count(query, default=5):
     """Extract an explicit requested development count, otherwise use default."""
@@ -2011,7 +2017,7 @@ st.markdown("""
     padding-bottom: 5rem;
 }
 
-.QUASFLOW-logo {
+.nexus-logo {
     font-size: 31px;
     font-weight: 800;
     letter-spacing: -1.5px;

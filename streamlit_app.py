@@ -1950,6 +1950,57 @@ async def knowledge_pipeline(query, images=None):
     return await gemini_text(build_context(query), images=images), [], ""
 
 
+def build_agent_result(route, answer="", sources=None, error="", status="completed"):
+    """Phase 4: return a consistent result contract for every specialist agent."""
+    return {
+        "route": route,
+        "status": status,
+        "answer": answer or "",
+        "sources": sources or [],
+        "error": error or "",
+    }
+
+
+async def execute_agent(route, query, images=None):
+    """Phase 4: execute one selected agent without changing its internal pipeline."""
+    try:
+        if route == ROUTE_RESEARCH:
+            st.session_state.activity.append("Deep research")
+            draft, sources, error = await research_pipeline(query)
+        elif route == ROUTE_FOREX:
+            st.session_state.activity.append("Forex Factory research")
+            draft, sources, error = await forex_pipeline(query)
+        elif route == ROUTE_DATA:
+            st.session_state.activity.append("Dataset analysis")
+            draft, sources, error = await knowledge_pipeline(query, images=images)
+        elif route == ROUTE_DOCUMENTS:
+            st.session_state.activity.append("Document retrieval")
+            draft, sources, error = await knowledge_pipeline(query, images=images)
+        elif route == ROUTE_VISION:
+            st.session_state.activity.append("Vision analysis")
+            draft, sources, error = await knowledge_pipeline(query, images=images)
+        else:
+            st.session_state.activity.append("General reasoning")
+            draft, sources, error = await knowledge_pipeline(query, images=images)
+
+        return build_agent_result(
+            route,
+            answer=draft,
+            sources=sources,
+            error=error,
+            status="completed",
+        )
+    except Exception as exc:
+        error = f"{type(exc).__name__}: {exc}"
+        st.session_state.activity.append(f"Agent failed: {route_label(route)}")
+        Observability.event("agent_failed", route=route, error=error)
+        return build_agent_result(
+            route,
+            error=error,
+            status="failed",
+        )
+
+
 async def answer_user(query, images=None):
     started = time.perf_counter()
     st.session_state.activity = ["Understanding request"]
@@ -1967,24 +2018,10 @@ async def answer_user(query, images=None):
     Observability.event("request_started",route=route,task_id=plan["task_id"])
     st.session_state.activity.append(f"Route: {route_label(route)}")
 
-    if route == ROUTE_RESEARCH:
-        st.session_state.activity.append("Deep research")
-        draft, sources, error = await research_pipeline(query)
-    elif route == ROUTE_FOREX:
-        st.session_state.activity.append("Forex Factory research")
-        draft, sources, error = await forex_pipeline(query)
-    elif route == ROUTE_DATA:
-        st.session_state.activity.append("Dataset analysis")
-        draft, sources, error = await knowledge_pipeline(query, images=images)
-    elif route == ROUTE_DOCUMENTS:
-        st.session_state.activity.append("Document retrieval")
-        draft, sources, error = await knowledge_pipeline(query, images=images)
-    elif route == ROUTE_VISION:
-        st.session_state.activity.append("Vision analysis")
-        draft, sources, error = await knowledge_pipeline(query, images=images)
-    else:
-        st.session_state.activity.append("General reasoning")
-        draft, sources, error = await knowledge_pipeline(query, images=images)
+    execution = await execute_agent(route, query, images=images)
+    draft = execution["answer"]
+    sources = execution["sources"]
+    error = execution["error"]
 
     draft = clean_ai_response(draft)
     if not draft:
@@ -1995,7 +2032,8 @@ async def answer_user(query, images=None):
     save_memory(query, draft)
     st.session_state.request_count += 1
     Observability.event("request_completed",route=route,latency=round(latency,4),source_count=len(sources),error=bool(error))
-    if st.session_state.agent_log: st.session_state.agent_log[-1].update({"status":"completed","latency":latency})
+    if st.session_state.agent_log:
+        st.session_state.agent_log[-1].update({"status": execution["status"], "latency": latency})
 
     return {
         "answer": draft,
@@ -2003,6 +2041,7 @@ async def answer_user(query, images=None):
         "route": route,
         "latency": latency,
         "error": error,
+        "status": execution["status"],
     }
 
 # -------------------- Styling --------------------

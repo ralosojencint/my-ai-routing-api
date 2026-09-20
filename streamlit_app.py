@@ -1867,26 +1867,40 @@ async def research_pipeline(query):
     if exact_contract:
         # Phase 3 evidence-integrity requests must use the source-aware
         # synthesis layer first. The deterministic renderer remains only as a
-        # fallback when the synthesis model is unavailable.
+        # fallback when the synthesis model is unavailable or invalid.
         draft=await research_synthesis(query,sources) if sources else ""
         if draft:
             draft=normalize_research_numbering(draft, query)
-        if draft and validate_research_output(draft, query, sources):
-            if validate_source_grounding(draft, sources, query):
+        synthesis_contract_ok=bool(draft and validate_research_output(draft, query, sources))
+        st.session_state.activity.append(
+            f"Synthesis contract check: {'passed' if synthesis_contract_ok else 'failed'}"
+        )
+        if synthesis_contract_ok:
+            synthesis_grounding_ok=validate_source_grounding(draft, sources, query)
+            st.session_state.activity.append(
+                f"Synthesis grounding check: {'passed' if synthesis_grounding_ok else 'failed'}"
+            )
+            if synthesis_grounding_ok:
                 st.session_state.activity.append("Evidence-integrity research output contract passed")
                 st.session_state.activity.append("Source-to-development grounding check passed")
                 return draft,sources,research_result.get("error","")
             st.session_state.activity.append("Source-to-development grounding check failed; using deterministic fallback")
-        if draft:
+        elif draft:
             st.session_state.activity.append("Research synthesis failed output validation; using deterministic fallback")
 
         # Exact-contract requests must never return an unvalidated model draft.
-        # Render the final answer deterministically, validate it, and return it
-        # directly so no later response-processing path can alter its numbering.
         if sources and n <= len(sources):
             fallback = render_exact_research_output(query, sources)
-            if fallback and validate_research_output(fallback, query, sources):
-                if validate_source_grounding(fallback, sources, query):
+            fallback_contract_ok=bool(fallback and validate_research_output(fallback, query, sources))
+            st.session_state.activity.append(
+                f"Fallback contract check: {'passed' if fallback_contract_ok else 'failed'}"
+            )
+            if fallback_contract_ok:
+                fallback_grounding_ok=validate_source_grounding(fallback, sources, query)
+                st.session_state.activity.append(
+                    f"Fallback grounding check: {'passed' if fallback_grounding_ok else 'failed'}"
+                )
+                if fallback_grounding_ok:
                     st.session_state.activity.append("Deterministic fallback validation passed")
                     st.session_state.activity.append("Source-to-development grounding check passed")
                     return fallback, sources, research_result.get("error", "")
@@ -1908,6 +1922,7 @@ async def research_pipeline(query):
     if not draft:
         draft="⚠️ NEXUS could not verify enough current AI information from today's research results."
     return draft,sources,research_result.get("error","")
+
 
 
 async def forex_pipeline(query):

@@ -1193,6 +1193,35 @@ async def forex_research(query):
         seen_urls.add(key)
         unique.append(source)
 
+    # Search snippets frequently omit the event-row fields. Attempt a direct
+    # calendar-page fetch as an additional source, while preserving the
+    # conservative event-level validator below.
+    calendar_url = f"https://www.forexfactory.com/calendar?day={today.strftime('%b').lower()}{today.day}.{today.year}"
+    try:
+        request = Request(
+            calendar_url,
+            headers={
+                "User-Agent": "Mozilla/5.0 (compatible; QUASFLOW/1.0)",
+                "Accept": "text/html,application/xhtml+xml",
+            },
+        )
+        with urlopen(request, timeout=12) as response:
+            page_html = response.read().decode("utf-8", errors="ignore")
+        page_text = re.sub(r"<script[^>]*>.*?</script>|<style[^>]*>.*?</style>", " ", page_html, flags=re.I | re.S)
+        page_text = re.sub(r"<[^>]+>", "\n", page_text)
+        page_text = html.unescape(re.sub(r"\s+", " ", page_text)).strip()
+        if page_text:
+            unique.append({
+                "title": f"Forex Factory calendar {date_text}",
+                "content": page_text,
+                "url": calendar_url,
+            })
+            st.session_state.activity.append("Forex direct calendar fetch: succeeded")
+    except Exception as exc:
+        st.session_state.activity.append(
+            "Forex direct calendar fetch: unavailable"
+        )
+
     # Calendar pages are not ordinary news articles and often have no
     # publication date, so do NOT apply the AI-news date/content gate here.
     ranked = sorted(

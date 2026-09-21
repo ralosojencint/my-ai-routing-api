@@ -1919,47 +1919,86 @@ async def research_pipeline(query):
 
 
 def _forex_event_candidates(source, today):
-    """Extract conservative event-level candidates from Forex Factory text."""
+    """Extract verified USD high-impact event blocks from Forex Factory text.
+
+    Forex Factory search snippets may place date, time, currency, impact, and
+    event title on adjacent lines. Parse a bounded block instead of requiring
+    every field on one line. Never accept a generic calendar/forum page alone.
+    """
     title = clean_text(source.get("title", ""))
     content = clean_text(source.get("content", ""))
-    url = str(source.get("url", "")).lower()
     text = f"{title}\n{content}"
-    date_tokens = {
-        today.isoformat(),
+    low_text = text.lower()
+
+    date_patterns = [
+        today.strftime("%Y-%m-%d"),
+        today.strftime("%b %-d, %Y").lower(),
         today.strftime("%b %-d").lower(),
-        today.strftime("%b %d").lower(),
+        today.strftime("%B %-d, %Y").lower(),
         today.strftime("%B %-d").lower(),
+        today.strftime("%b %d").lower(),
         today.strftime("%B %d").lower(),
-    }
-    broad_page = any(term in text.lower() for term in (
-        "this month", "next month", "last month", "forum",
-        "reading forex factory calendar",
-    ))
-    if broad_page and not any(token in text.lower() for token in date_tokens):
-        return []
+    ]
+    date_re = re.compile(
+        r"(?:" + "|".join(re.escape(token) for token in date_patterns if token) + r")",
+        re.IGNORECASE,
+    )
+    date_context_re = re.compile(r"\b(?:today|up next)\b", re.IGNORECASE)
+    currency_re = re.compile(r"(?<![A-Z])USD(?![A-Z])", re.IGNORECASE)
+    impact_re = re.compile(
+        r"\b(?:high\s*impact|high-impact|impact\s*[:\-]?\s*high|red\s*(?:folder|impact))\b",
+        re.IGNORECASE,
+    )
+    eventish_re = re.compile(
+        r"\b(?:fed|fomc|cpi|ppi|nfp|nonfarm|payroll|gdp|pce|retail sales|jobless|unemployment|ism|consumer confidence|jolts|adp|powell|treasury|manufacturing|services)\b",
+        re.IGNORECASE,
+    )
 
-    lines = [line.strip(" |•-\t") for line in re.split(r"\n|(?<=\|)", text) if line.strip()]
+    # Normalize separators while retaining line boundaries for block parsing.
+    raw_lines = [
+        re.sub(r"\s+", " ", line.strip(" |•\t-"))
+        for line in re.split(r"\n|(?<=\|)", text)
+        if line.strip(" |•\t-")
+    ]
+    lines = [line for line in raw_lines if len(line) >= 2]
     candidates = []
-    for line in lines:
-        low = line.lower()
-        if not re.search(r"\busd\b", low):
-            continue
-        if not any(token in low for token in date_tokens) and not any(
-            token in low for token in ("today", "up next", "sep 21")
-        ):
-            continue
-        impact = any(term in low for term in (
-            "high impact", "high-impact", "red folder", "red impact", "impact: high",
-        ))
-        if not impact:
-            continue
-        if len(line) < 18:
-            continue
-        candidates.append(line)
 
-    if candidates:
-        return list(dict.fromkeys(candidates))
-    return []
+    # Build short overlapping blocks so fields split across adjacent lines can
+    # still be verified, while limiting unrelated page-wide combinations.
+    for index in range(len(lines)):
+        for width in (1, 2, 3, 4, 5):
+            block_lines = lines[index:index + width]
+            if not block_lines:
+                continue
+            block = " | ".join(block_lines)
+            low = block.lower()
+            has_date = bool(date_re.search(block) or date_context_re.search(block))
+            has_usd = bool(currency_re.search(block))
+            has_high_impact = bool(impact_re.search(block))
+            has_event = bool(eventish_re.search(block)) or len(block.split()) >= 5
+
+            if not (has_date and has_usd and has_high_impact and has_event):
+                continue
+            if any(term in low for term in ("this month", "next month", "last month", "forum")) and not eventish_re.search(block):
+                continue
+
+            # Reject blocks that merely mention USD/high impact in navigation or
+            # explanatory text without an identifiable event-like description.
+            if len(block) < 18 or len(block) > 600:
+                continue
+            normalized = re.sub(r"\s+", " ", block).strip(" |-")
+            if normalized not in candidates:
+                candidates.append(normalized)
+
+    # Prefer the shortest verified block for each overlapping event.
+    selected = []
+    for candidate in sorted(candidates, key=lambda value: (len(value.split()), len(value))):
+        candidate_low = candidate.lower()
+        if any(candidate_low in existing.lower() or existing.lower() in candidate_low for existing in selected):
+            continue
+        selected.append(candidate)
+
+    return selected[:10]
 
 
 def _forex_source_matches_usd_high_impact_today(source, today):

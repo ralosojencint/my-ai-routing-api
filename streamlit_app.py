@@ -1918,68 +1918,93 @@ async def research_pipeline(query):
     return draft,sources,research_result.get("error","")
 
 
-def _forex_source_matches_usd_high_impact_today(source, today):
-    """Conservative gate: reject broad/monthly/forum pages unless they expose all requested signals."""
+def _forex_event_candidates(source, today):
+    """Extract conservative event-level candidates from Forex Factory text."""
     title = clean_text(source.get("title", ""))
     content = clean_text(source.get("content", ""))
     url = str(source.get("url", "")).lower()
-    text = f"{title} {content} {url}".lower()
-    date_signals = {
+    text = f"{title}\n{content}"
+    date_tokens = {
         today.isoformat(),
-        today.strftime("%b %-d, %Y").lower(),
-        today.strftime("%b %d, %Y").lower(),
-        today.strftime("%B %-d, %Y").lower(),
-        today.strftime("%B %d, %Y").lower(),
+        today.strftime("%b %-d").lower(),
+        today.strftime("%b %d").lower(),
+        today.strftime("%B %-d").lower(),
+        today.strftime("%B %d").lower(),
     }
-    has_today = any(signal in text for signal in date_signals)
-    has_usd = bool(re.search(r"\busd\b|\bu\.?s\.? dollar", text, flags=re.I))
-    has_high_impact = any(term in text for term in (
-        "high impact", "high-impact", "red folder", "red impact", "impact: high",
+    broad_page = any(term in text.lower() for term in (
+        "this month", "next month", "last month", "forum",
+        "reading forex factory calendar",
     ))
-    is_broad_page = any(term in text for term in (
-        "this month", "next month", "forum", "reading forex factory calendar",
-    ))
-    return has_today and has_usd and has_high_impact and not is_broad_page
+    if broad_page and not any(token in text.lower() for token in date_tokens):
+        return []
+
+    lines = [line.strip(" |•-\t") for line in re.split(r"\n|(?<=\|)", text) if line.strip()]
+    candidates = []
+    for line in lines:
+        low = line.lower()
+        if not re.search(r"\busd\b", low):
+            continue
+        if not any(token in low for token in date_tokens) and not any(
+            token in low for token in ("today", "up next", "sep 21")
+        ):
+            continue
+        impact = any(term in low for term in (
+            "high impact", "high-impact", "red folder", "red impact", "impact: high",
+        ))
+        if not impact:
+            continue
+        if len(line) < 18:
+            continue
+        candidates.append(line)
+
+    if candidates:
+        return list(dict.fromkeys(candidates))
+    return []
+
+
+def _forex_source_matches_usd_high_impact_today(source, today):
+    """Compatibility gate retained for callers; uses event-level extraction."""
+    return bool(_forex_event_candidates(source, today))
 
 
 async def forex_pipeline(query):
-    """Return only conservative matches for today's USD high-impact calendar request."""
+    """Return only individually extracted, conservative USD high-impact events."""
     research_result = await forex_research(query)
     sources = research_result.get("sources", [])
-    today = datetime.now(ZoneInfo("Asia/Manila")).date()
     verified = []
     matched_sources = []
+    seen_events = set()
+    today = datetime.now(ZoneInfo("Asia/Manila")).date()
 
     for source in sources:
-        if not _forex_source_matches_usd_high_impact_today(source, today):
-            continue
-        title = clean_text(source.get("title", ""))
-        content = clean_text(source.get("content", ""))
-        if not title and not content:
-            continue
-        summary = content[:500].strip()
-        if len(content) > 500:
-            summary = summary.rsplit(" ", 1)[0] + "…"
-        if title and summary:
-            verified.append(f"**{title}** — {summary}")
-        elif title:
-            verified.append(f"**{title}**")
-        matched_sources.append(source)
-        if len(verified) == 5:
+        events = _forex_event_candidates(source, today)
+        for event in events:
+            key = re.sub(r"\s+", " ", event.lower()).strip()
+            if key in seen_events:
+                continue
+            seen_events.add(key)
+            verified.append(event)
+            matched_sources.append(source)
+            if len(verified) >= 10:
+                break
+        if len(verified) >= 10:
             break
 
     st.session_state.activity.append(
-        f"Forex filter: today={today.isoformat()} USD/high-impact matches={len(verified)}"
+        f"Forex filter: today={today.isoformat()} USD/high-impact events={len(verified)}"
     )
 
     if verified:
-        return "**Forex Factory — Today's USD High-Impact Events**\n\n" + "\n\n".join(
-            f"{i}. {item}" for i, item in enumerate(verified, 1)
-        ), matched_sources, research_result.get("error", "")
+        return (
+            "**Forex Factory — Today's USD High-Impact Events**\n\n"
+            + "\n".join(f"{i}. {event}" for i, event in enumerate(verified, 1)),
+            matched_sources,
+            research_result.get("error", ""),
+        )
 
     return (
-        "⚠️ NEXUS found Forex Factory pages, but could not verify a source containing today's USD high-impact events."
-        " It will not display unfiltered monthly, forum, or non-USD results.",
+        "⚠️ NEXUS found Forex Factory pages, but could not verify individual USD high-impact events for today. "
+        "It will not display unfiltered monthly, forum, or non-USD results.",
         matched_sources,
         research_result.get("error", ""),
     )

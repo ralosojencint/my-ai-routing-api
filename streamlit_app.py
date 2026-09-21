@@ -1918,13 +1918,41 @@ async def research_pipeline(query):
     return draft,sources,research_result.get("error","")
 
 
+def _forex_source_matches_usd_high_impact_today(source, today):
+    """Conservative gate: reject broad/monthly/forum pages unless they expose all requested signals."""
+    title = clean_text(source.get("title", ""))
+    content = clean_text(source.get("content", ""))
+    url = str(source.get("url", "")).lower()
+    text = f"{title} {content} {url}".lower()
+    date_signals = {
+        today.isoformat(),
+        today.strftime("%b %-d, %Y").lower(),
+        today.strftime("%b %d, %Y").lower(),
+        today.strftime("%B %-d, %Y").lower(),
+        today.strftime("%B %d, %Y").lower(),
+    }
+    has_today = any(signal in text for signal in date_signals)
+    has_usd = bool(re.search(r"\busd\b|\bu\.?s\.? dollar", text, flags=re.I))
+    has_high_impact = any(term in text for term in (
+        "high impact", "high-impact", "red folder", "red impact", "impact: high",
+    ))
+    is_broad_page = any(term in text for term in (
+        "this month", "next month", "forum", "reading forex factory calendar",
+    ))
+    return has_today and has_usd and has_high_impact and not is_broad_page
+
+
 async def forex_pipeline(query):
-    """Existing Forex Factory pipeline, isolated behind the router."""
+    """Return only conservative matches for today's USD high-impact calendar request."""
     research_result = await forex_research(query)
     sources = research_result.get("sources", [])
+    today = datetime.now(ZoneInfo("Asia/Manila")).date()
     verified = []
+    matched_sources = []
 
     for source in sources:
+        if not _forex_source_matches_usd_high_impact_today(source, today):
+            continue
         title = clean_text(source.get("title", ""))
         content = clean_text(source.get("content", ""))
         if not title and not content:
@@ -1936,19 +1964,23 @@ async def forex_pipeline(query):
             verified.append(f"**{title}** — {summary}")
         elif title:
             verified.append(f"**{title}**")
+        matched_sources.append(source)
         if len(verified) == 5:
             break
 
+    st.session_state.activity.append(
+        f"Forex filter: today={today.isoformat()} USD/high-impact matches={len(verified)}"
+    )
+
     if verified:
-        return "**Forex Factory — High Impact / Economic Calendar**\n\n" + "\n\n".join(
+        return "**Forex Factory — Today's USD High-Impact Events**\n\n" + "\n\n".join(
             f"{i}. {item}" for i, item in enumerate(verified, 1)
-        ), sources, research_result.get("error", "")
+        ), matched_sources, research_result.get("error", "")
 
     return (
-        "⚠️ NEXUS found Forex Factory results, but could not extract the calendar details from them."
-        if sources else
-        "⚠️ NEXUS could not find usable Forex Factory economic-calendar results for this request.",
-        sources,
+        "⚠️ NEXUS found Forex Factory pages, but could not verify a source containing today's USD high-impact events."
+        " It will not display unfiltered monthly, forum, or non-USD results.",
+        matched_sources,
         research_result.get("error", ""),
     )
 

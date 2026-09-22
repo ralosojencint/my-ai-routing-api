@@ -1207,16 +1207,32 @@ async def forex_research(query):
         )
         with urlopen(request, timeout=12) as response:
             page_html = response.read().decode("utf-8", errors="ignore")
-        page_text = re.sub(r"<script[^>]*>.*?</script>|<style[^>]*>.*?</style>", " ", page_html, flags=re.I | re.S)
-        page_text = re.sub(r"<[^>]+>", "\n", page_text)
-        page_text = html.unescape(re.sub(r"\s+", " ", page_text)).strip()
+        # Preserve the original HTML and line boundaries. A non-empty HTTP
+        # response is not proof that event rows were present (the page may be
+        # a JavaScript shell), so diagnostics must be explicit.
+        raw_text = re.sub(
+            r"<script[^>]*>.*?</script>|<style[^>]*>.*?</style>",
+            " ",
+            page_html,
+            flags=re.I | re.S,
+        )
+        raw_text = re.sub(r"<[^>]+>", "\n", raw_text)
+        page_text = html.unescape(raw_text)
+        page_text = "\n".join(
+            re.sub(r"[ \t]+", " ", line).strip()
+            for line in page_text.splitlines()
+            if line.strip()
+        )
         if page_text:
             unique.append({
                 "title": f"Forex Factory calendar {date_text}",
                 "content": page_text,
+                "raw_html": page_html,
                 "url": calendar_url,
             })
-            st.session_state.activity.append("Forex direct calendar fetch: succeeded")
+            st.session_state.activity.append(
+                f"Forex direct calendar fetch: succeeded html_chars={len(page_html)} text_chars={len(page_text)}"
+            )
     except Exception as exc:
         st.session_state.activity.append(
             "Forex direct calendar fetch: unavailable"
@@ -1955,7 +1971,9 @@ def _forex_event_candidates(source, today):
     every field on one line. Never accept a generic calendar/forum page alone.
     """
     title = clean_text(source.get("title", ""))
-    content = clean_text(source.get("content", ""))
+    # Do not call clean_text on the full content: it removes line boundaries
+    # that are required to keep date/currency/impact fields in one event block.
+    content = source.get("content", "") or ""
     text = f"{title}\n{content}"
     low_text = text.lower()
 
@@ -2027,7 +2045,14 @@ def _forex_event_candidates(source, today):
             continue
         selected.append(candidate)
 
-    return selected[:10]
+    result = selected[:10]
+    # Keep this diagnostic local and conservative: zero means no verified
+    # event block was extracted, not that the calendar had zero events.
+    if source.get("url", "").lower().find("forexfactory.com") >= 0:
+        st.session_state.activity.append(
+            f"Forex extraction: source_chars={len(text)} candidate_blocks={len(candidates)} verified_blocks={len(result)}"
+        )
+    return result
 
 
 def _forex_source_matches_usd_high_impact_today(source, today):

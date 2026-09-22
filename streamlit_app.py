@@ -1224,6 +1224,7 @@ async def forex_research(query):
         raw_text = re.sub(r"<[^>]+>", "\n", visible_html)
         page_text = html.unescape(raw_text)
         embedded_text = html.unescape(script_payload)
+        structured_records = _forex_structured_records(embedded_text, today)
         page_text = "\n".join(
             re.sub(r"[ \t]+", " ", line).strip()
             for line in page_text.splitlines()
@@ -1236,12 +1237,13 @@ async def forex_research(query):
         if combined_text:
             unique.append({
                 "title": f"Forex Factory calendar {date_text}",
-                "content": combined_text,
+                "content": combined_text + ("\n" + "\n".join(structured_records) if structured_records else ""),
                 "raw_html": page_html,
+                "structured_records": structured_records,
                 "url": calendar_url,
             })
             st.session_state.activity.append(
-                f"Forex direct calendar fetch: succeeded html_chars={len(page_html)} text_chars={len(combined_text)} embedded_chars={len(embedded_text)}"
+                f"Forex direct calendar fetch: succeeded html_chars={len(page_html)} text_chars={len(combined_text)} embedded_chars={len(embedded_text)} structured_records={len(structured_records)}"
             )
     except Exception as exc:
         st.session_state.activity.append(
@@ -1973,6 +1975,52 @@ async def research_pipeline(query):
     return draft,sources,research_result.get("error","")
 
 
+
+def _forex_structured_records(payload, today):
+    """Extract conservative calendar records from embedded JSON-like payloads."""
+    records = []
+    if not payload:
+        return records
+
+    decoder = json.JSONDecoder()
+    candidates = []
+    for match in re.finditer(r"\{", payload):
+        try:
+            value, _ = decoder.raw_decode(payload[match.start():])
+        except (ValueError, TypeError):
+            continue
+        if isinstance(value, (dict, list)):
+            candidates.append(value)
+
+    def walk(value):
+        if isinstance(value, dict):
+            keys = {str(k).lower(): v for k, v in value.items()}
+            currency = str(keys.get("currency", keys.get("currencycode", keys.get("ccy", ""))) or "").upper()
+            impact = str(keys.get("impact", keys.get("impactlevel", keys.get("importance", ""))) or "").lower()
+            title = keys.get("title") or keys.get("event") or keys.get("eventname") or keys.get("name") or keys.get("description")
+            raw_date = keys.get("date") or keys.get("datetime") or keys.get("timestamp") or keys.get("start")
+            raw_time = keys.get("time") or keys.get("eventtime") or ""
+            text = " ".join(str(value) for value in (title, raw_date, raw_time, currency, impact) if value not in (None, ""))
+            if currency == "USD" and "high" in impact and title and text:
+                date_ok = str(today) in text or today.strftime("%b").lower() in text.lower() or today.strftime("%B").lower() in text.lower()
+                if date_ok:
+                    records.append(f"{raw_date} {raw_time} | USD | High | {str(title).strip()}")
+            for child in value.values():
+                walk(child)
+        elif isinstance(value, list):
+            for child in value:
+                walk(child)
+
+    for candidate in candidates:
+        walk(candidate)
+
+    unique = []
+    for record in records:
+        normalized = re.sub(r"\s+", " ", record).strip()
+        if normalized not in unique:
+            unique.append(normalized)
+    return unique
+
 def _forex_event_candidates(source, today):
     """Extract verified USD high-impact event blocks from Forex Factory text.
 
@@ -1981,6 +2029,9 @@ def _forex_event_candidates(source, today):
     every field on one line. Never accept a generic calendar/forum page alone.
     """
     title = clean_text(source.get("title", ""))
+    structured_records = source.get("structured_records") or []
+    if structured_records:
+        return list(dict.fromkeys(str(item).strip() for item in structured_records if str(item).strip()))[:10]
     # Do not call clean_text on the full content: it removes line boundaries
     # that are required to keep date/currency/impact fields in one event block.
     content = source.get("content", "") or ""

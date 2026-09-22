@@ -1210,28 +1210,38 @@ async def forex_research(query):
         # Preserve the original HTML and line boundaries. A non-empty HTTP
         # response is not proof that event rows were present (the page may be
         # a JavaScript shell), so diagnostics must be explicit.
-        raw_text = re.sub(
+        # Keep script payloads separately: modern calendar pages may place
+        # event records in embedded JSON instead of visible HTML rows.
+        script_payload = "\n".join(
+            re.findall(r"<script[^>]*>(.*?)</script>", page_html, flags=re.I | re.S)
+        )
+        visible_html = re.sub(
             r"<script[^>]*>.*?</script>|<style[^>]*>.*?</style>",
             " ",
             page_html,
             flags=re.I | re.S,
         )
-        raw_text = re.sub(r"<[^>]+>", "\n", raw_text)
+        raw_text = re.sub(r"<[^>]+>", "\n", visible_html)
         page_text = html.unescape(raw_text)
+        embedded_text = html.unescape(script_payload)
         page_text = "\n".join(
             re.sub(r"[ \t]+", " ", line).strip()
             for line in page_text.splitlines()
             if line.strip()
         )
-        if page_text:
+        # Append embedded payloads without claiming they are verified events.
+        combined_text = page_text
+        if embedded_text.strip():
+            combined_text += "\n" + embedded_text
+        if combined_text:
             unique.append({
                 "title": f"Forex Factory calendar {date_text}",
-                "content": page_text,
+                "content": combined_text,
                 "raw_html": page_html,
                 "url": calendar_url,
             })
             st.session_state.activity.append(
-                f"Forex direct calendar fetch: succeeded html_chars={len(page_html)} text_chars={len(page_text)}"
+                f"Forex direct calendar fetch: succeeded html_chars={len(page_html)} text_chars={len(combined_text)} embedded_chars={len(embedded_text)}"
             )
     except Exception as exc:
         st.session_state.activity.append(

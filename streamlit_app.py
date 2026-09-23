@@ -2119,7 +2119,10 @@ def _forex_structured_records(payload, today):
         return objects
 
     def is_usd(fragment):
-        return bool(re.search(r"[\"']currency[\"']\s*:\s*[\"']USD[\"']", fragment, flags=re.I))
+        # Validate the currency field belonging to this exact object. A broad
+        # regex can match USD nested inside a parent object whose own currency
+        # is CHF/EUR, causing neighboring event fields to be mixed.
+        return field(fragment, ("currency",)).upper() == "USD"
 
     records = []
     # Prefer the smallest balanced object containing the currency field. This
@@ -2128,6 +2131,9 @@ def _forex_structured_records(payload, today):
     fragments.sort(key=len)
 
     for fragment in fragments:
+        currency = field(fragment, ("currency",)).upper()
+        if currency != "USD":
+            continue
         impact = field(fragment, ("impactName", "impact", "impactTitle", "importance")).lower()
         if "high" not in impact:
             continue
@@ -2140,7 +2146,7 @@ def _forex_structured_records(payload, today):
         time_label = field(fragment, ("timeLabel", "time", "eventTime"))
         if not title:
             continue
-        label = f"{time_label} | USD | High | {title}" if time_label else f"USD | High | {title}"
+        label = f"{time_label} | {currency} | High | {title}" if time_label else f"{currency} | High | {title}"
         label = re.sub(r"\s+", " ", label).strip()
         if label not in records:
             records.append(label)

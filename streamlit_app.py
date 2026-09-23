@@ -2064,16 +2064,21 @@ async def research_pipeline(query):
 
 
 def _forex_structured_records(payload, today):
-    """Extract USD high-impact events from Forex Factory embedded objects."""
+    """Extract USD high-impact events from embedded Forex Factory objects.
+
+    Uses balanced-brace scanning rather than a flat regex. Forex Factory embeds
+    objects with nested metadata, so a regex that requires every field to be in
+    one flat object can return zero records.
+    """
     if not payload:
         return []
 
     def field(fragment, names):
         for name in names:
-            pattern = rf"[\"']?{re.escape(name)}[\"']?\s*:\s*(?:[\"']([^\"']*)[\"']|(-?\d+(?:\.\d+)?))"
-            match = re.search(pattern, fragment, flags=re.I)
+            pattern = rf"(?<![A-Za-z0-9_])[\"']?{re.escape(name)}[\"']?(?![A-Za-z0-9_])\s*:\s*(?:[\"']([^\"']*)[\"']|(-?\d+(?:\.\d+)?))"
+            match = re.search(pattern, fragment, flags=re.I | re.S)
             if match:
-                return match.group(1) if match.group(1) is not None else match.group(2)
+                return (match.group(1) if match.group(1) is not None else match.group(2)).strip()
         return ""
 
     def event_date(dateline):
@@ -2083,21 +2088,55 @@ def _forex_structured_records(payload, today):
         except (TypeError, ValueError, OverflowError, OSError):
             return None
 
+    def balanced_objects(text):
+        """Yield balanced {...} fragments while respecting quoted strings."""
+        objects = []
+        for start, char in enumerate(text):
+            if char != "{":
+                continue
+            depth = 0
+            quote = None
+            escaped = False
+            for index in range(start, len(text)):
+                current = text[index]
+                if quote:
+                    if escaped:
+                        escaped = False
+                    elif current == "\\":
+                        escaped = True
+                    elif current == quote:
+                        quote = None
+                    continue
+                if current in ("'", '"', '`'):
+                    quote = current
+                elif current == "{":
+                    depth += 1
+                elif current == "}":
+                    depth -= 1
+                    if depth == 0:
+                        objects.append(text[start:index + 1])
+                        break
+        return objects
+
+    def is_usd(fragment):
+        return bool(re.search(r"[\"']currency[\"']\s*:\s*[\"']USD[\"']", fragment, flags=re.I))
+
     records = []
-    fragments = re.findall(
-        r"\{[^{}]{0,5000}?[\"']currency[\"']\s*:\s*[\"']USD[\"'][^{}]{0,5000}?\}",
-        payload,
-        flags=re.I | re.S,
-    )
+    # Prefer the smallest balanced object containing the currency field. This
+    # avoids combining fields from neighboring calendar events.
+    fragments = [fragment for fragment in balanced_objects(payload) if is_usd(fragment)]
+    fragments.sort(key=len)
 
     for fragment in fragments:
         impact = field(fragment, ("impactName", "impact", "impactTitle", "importance")).lower()
         if "high" not in impact:
             continue
         dateline = field(fragment, ("dateline", "timestamp", "date", "datetime"))
-        if dateline and event_date(dateline) != today:
-            continue
-        title = field(fragment, ("name", "title", "event", "eventName", "eventTitle", "soloTitle", "soloTitleFull", "description"))
+        if dateline:
+            parsed_date = event_date(dateline)
+            if parsed_date != today:
+                continue
+        title = field(fragment, ("name", "title", "soloTitle", "soloTitleFull", "trimmedPrefixedName", "event", "eventName", "eventTitle", "description"))
         time_label = field(fragment, ("timeLabel", "time", "eventTime"))
         if not title:
             continue

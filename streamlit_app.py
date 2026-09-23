@@ -7,7 +7,7 @@ from xml.etree import ElementTree as ET
 from email.utils import parsedate_to_datetime
 from zoneinfo import ZoneInfo
 from collections import Counter
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timezone, timedelta
 
 import streamlit as st
 import pandas as pd
@@ -1193,13 +1193,31 @@ async def forex_research(query):
         seen_urls.add(key)
         unique.append(source)
 
-    # Search snippets frequently omit the event-row fields. Attempt a direct
-    # calendar-page fetch as an additional source, while preserving the
+    # Search snippets frequently omit the event-row fields. Attempt direct
+    # calendar-page fetches as an additional source, while preserving the
     # conservative event-level validator below.
-    calendar_url = f"https://www.forexfactory.com/calendar?day={today.strftime('%b').lower()}{today.day}.{today.year}"
-    try:
+    #
+    # ROOT CAUSE: Forex Factory buckets its "day=" calendar page (and each
+    # event's timeLabel) by the REQUESTING SESSION's timezone, not by Manila
+    # time. An anonymous request with no timezone cookie defaults to
+    # America/Los_Angeles (confirmed from the page's own embedded window.FF
+    # settings object and cross-checked against a real event's timeLabel).
+    # Manila is 15h ahead of Los Angeles, so a single "day=<manila_today>"
+    # fetch only covers the LAST ~9h of Manila's calendar day and silently
+    # misses the EARLIER ~15h, which live on Forex Factory's PT-labeled
+    # PREVIOUS day. That is why structured_records / verified events can
+    # come back empty even on days with real USD high-impact events.
+    #
+    # FIX: fetch both the Manila-"today" page and the Manila-"today minus
+    # 1 day" page, and let the existing Manila-based dateline filter inside
+    # _forex_structured_records (unchanged, verified correct) pick out
+    # exactly the events that are genuinely today in Manila from the
+    # combined data. Widening the fetch window this way cannot let a
+    # wrong-day event through: it only stops correct ones from being missed.
+    def _forex_fetch_calendar_script_text(day):
+        url = f"https://www.forexfactory.com/calendar?day={day.strftime('%b').lower()}{day.day}.{day.year}"
         request = Request(
-            calendar_url,
+            url,
             headers={
                 "User-Agent": "Mozilla/5.0 (compatible; QUASFLOW/1.0)",
                 "Accept": "text/html,application/xhtml+xml",
@@ -1207,134 +1225,53 @@ async def forex_research(query):
         )
         with urlopen(request, timeout=12) as response:
             page_html = response.read().decode("utf-8", errors="ignore")
-        
-        # TEMPORARY FOREX FACTORY DIAGNOSTIC — DO NOT MODIFY EXTRACTION
-        # Capture response structure only. Remove after investigation.
-        script_matches = re.findall(
-            r"<script([^>]*)>(.*?)</script>",
-            page_html,
-            flags=re.I | re.S,
-        )
-
         script_payload = "\n".join(
-            body for _, body in script_matches
+            body for _, body in re.findall(
+                r"<script([^>]*)>(.*?)</script>", page_html, flags=re.I | re.S
+            )
         )
-
-        # Record basic response characteristics.
-        st.session_state.activity.append(
-            f"Forex diagnostic: html_chars={len(page_html)} "
-            f"script_count={len(script_matches)} "
-            f"script_chars={len(script_payload)}"
-        )
-
-        # Identify scripts that may contain calendar data.
-        script_markers = []
-        for index, (attributes, body) in enumerate(script_matches):
-            body_lower = body.lower()
-
-            markers = (
-                "calendar",
-                "event",
-                "currency",
-                "impact",
-                "forex",
-                "economic",
-                "__next_data__",
-            )
-
-            matched_markers = [
-                marker for marker in markers
-                if marker in body_lower
-            ]
-
-            if matched_markers:
-                script_markers.append(
-                    f"script={index} "
-                    f"chars={len(body)} "
-                    f"markers={','.join(matched_markers)}"
-                )
-
-        if script_markers:
-            st.session_state.activity.append(
-                "Forex diagnostic script markers: "
-                + " | ".join(script_markers[:20])
-            )
-        else:
-            st.session_state.activity.append(
-                "Forex diagnostic: no known data markers found in scripts"
-            )
-
-        # Capture limited context around likely data markers.
-        # This is diagnostic text only; it does not feed the parser.
-        diagnostic_samples = []
-
-        for keyword in (
-            "calendar",
-            "currency",
-            "impact",
-            "event",
-            "economic",
-        ):
-            match = re.search(
-                re.escape(keyword),
-                script_payload,
-                flags=re.I,
-            )
-
-            if match:
-                start = max(0, match.start() - 250)
-                end = min(len(script_payload), match.end() + 500)
-
-                sample = re.sub(
-                    r"\s+",
-                    " ",
-                    script_payload[start:end],
-                ).strip()
-
-                diagnostic_samples.append(
-                    f"{keyword}: {sample[:750]}"
-                )
-
-        for sample in diagnostic_samples[:5]:
-            st.session_state.activity.append(
-                "Forex diagnostic sample: " + sample
-            )
-
-        # EXISTING EXTRACTION LOGIC CONTINUES UNCHANGED.
-
         visible_html = re.sub(
             r"<script[^>]*>.*?</script>|<style[^>]*>.*?</style>",
             " ",
             page_html,
             flags=re.I | re.S,
         )
-        raw_text = re.sub(r"<[^>]+>", "\n", visible_html)
-        page_text = html.unescape(raw_text)
-        embedded_text = html.unescape(script_payload)
-        structured_records = _forex_structured_records(embedded_text, today)
         page_text = "\n".join(
             re.sub(r"[ \t]+", " ", line).strip()
-            for line in page_text.splitlines()
+            for line in html.unescape(re.sub(r"<[^>]+>", "\n", visible_html)).splitlines()
             if line.strip()
         )
-        # Append embedded payloads without claiming they are verified events.
-        combined_text = page_text
-        if embedded_text.strip():
-            combined_text += "\n" + embedded_text
-        if combined_text:
-            unique.append({
-                "title": f"Forex Factory calendar {date_text}",
-                "content": combined_text + ("\n" + "\n".join(structured_records) if structured_records else ""),
-                "raw_html": page_html,
-                "structured_records": structured_records,
-                "url": calendar_url,
-            })
+        return url, page_html, page_text, html.unescape(script_payload)
+
+    fetched_pages = []
+    for day in (today, today - timedelta(days=1)):
+        try:
+            fetched_pages.append(_forex_fetch_calendar_script_text(day))
             st.session_state.activity.append(
-                f"Forex direct calendar fetch: succeeded html_chars={len(page_html)} text_chars={len(combined_text)} embedded_chars={len(embedded_text)} structured_records={len(structured_records)}"
+                f"Forex calendar fetch day={day.isoformat()}: succeeded"
             )
-    except Exception as exc:
+        except Exception:
+            st.session_state.activity.append(
+                f"Forex calendar fetch day={day.isoformat()}: unavailable"
+            )
+
+    if fetched_pages:
+        combined_page_text = "\n".join(p[2] for p in fetched_pages)
+        combined_embedded_text = "\n".join(p[3] for p in fetched_pages)
+        structured_records = _forex_structured_records(combined_embedded_text, today)
+        combined_text = combined_page_text
+        if combined_embedded_text.strip():
+            combined_text += "\n" + combined_embedded_text
+        unique.append({
+            "title": f"Forex Factory calendar {date_text}",
+            "content": combined_text + ("\n" + "\n".join(structured_records) if structured_records else ""),
+            "raw_html": fetched_pages[0][1],
+            "structured_records": structured_records,
+            "url": fetched_pages[0][0],
+        })
         st.session_state.activity.append(
-            "Forex direct calendar fetch: unavailable"
+            f"Forex direct calendar fetch: pages={len(fetched_pages)} text_chars={len(combined_text)} "
+            f"embedded_chars={len(combined_embedded_text)} structured_records={len(structured_records)}"
         )
 
     # Calendar pages are not ordinary news articles and often have no

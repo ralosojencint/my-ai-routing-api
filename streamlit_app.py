@@ -1207,14 +1207,101 @@ async def forex_research(query):
         )
         with urlopen(request, timeout=12) as response:
             page_html = response.read().decode("utf-8", errors="ignore")
-        # Preserve the original HTML and line boundaries. A non-empty HTTP
-        # response is not proof that event rows were present (the page may be
-        # a JavaScript shell), so diagnostics must be explicit.
-        # Keep script payloads separately: modern calendar pages may place
-        # event records in embedded JSON instead of visible HTML rows.
-        script_payload = "\n".join(
-            re.findall(r"<script[^>]*>(.*?)</script>", page_html, flags=re.I | re.S)
+        
+        # TEMPORARY FOREX FACTORY DIAGNOSTIC — DO NOT MODIFY EXTRACTION
+        # Capture response structure only. Remove after investigation.
+        script_matches = re.findall(
+            r"<script([^>]*)>(.*?)</script>",
+            page_html,
+            flags=re.I | re.S,
         )
+
+        script_payload = "\n".join(
+            body for _, body in script_matches
+        )
+
+        # Record basic response characteristics.
+        st.session_state.activity.append(
+            f"Forex diagnostic: html_chars={len(page_html)} "
+            f"script_count={len(script_matches)} "
+            f"script_chars={len(script_payload)}"
+        )
+
+        # Identify scripts that may contain calendar data.
+        script_markers = []
+        for index, (attributes, body) in enumerate(script_matches):
+            body_lower = body.lower()
+
+            markers = (
+                "calendar",
+                "event",
+                "currency",
+                "impact",
+                "forex",
+                "economic",
+                "__next_data__",
+            )
+
+            matched_markers = [
+                marker for marker in markers
+                if marker in body_lower
+            ]
+
+            if matched_markers:
+                script_markers.append(
+                    f"script={index} "
+                    f"chars={len(body)} "
+                    f"markers={','.join(matched_markers)}"
+                )
+
+        if script_markers:
+            st.session_state.activity.append(
+                "Forex diagnostic script markers: "
+                + " | ".join(script_markers[:20])
+            )
+        else:
+            st.session_state.activity.append(
+                "Forex diagnostic: no known data markers found in scripts"
+            )
+
+        # Capture limited context around likely data markers.
+        # This is diagnostic text only; it does not feed the parser.
+        diagnostic_samples = []
+
+        for keyword in (
+            "calendar",
+            "currency",
+            "impact",
+            "event",
+            "economic",
+        ):
+            match = re.search(
+                re.escape(keyword),
+                script_payload,
+                flags=re.I,
+            )
+
+            if match:
+                start = max(0, match.start() - 250)
+                end = min(len(script_payload), match.end() + 500)
+
+                sample = re.sub(
+                    r"\s+",
+                    " ",
+                    script_payload[start:end],
+                ).strip()
+
+                diagnostic_samples.append(
+                    f"{keyword}: {sample[:750]}"
+                )
+
+        for sample in diagnostic_samples[:5]:
+            st.session_state.activity.append(
+                "Forex diagnostic sample: " + sample
+            )
+
+        # EXISTING EXTRACTION LOGIC CONTINUES UNCHANGED.
+
         visible_html = re.sub(
             r"<script[^>]*>.*?</script>|<style[^>]*>.*?</style>",
             " ",

@@ -2064,49 +2064,49 @@ async def research_pipeline(query):
 
 
 def _forex_structured_records(payload, today):
-    """Extract conservative calendar records from embedded JSON-like payloads."""
-    records = []
+    """Extract USD high-impact events from Forex Factory embedded objects."""
     if not payload:
-        return records
+        return []
 
-    decoder = json.JSONDecoder()
-    candidates = []
-    for match in re.finditer(r"\{", payload):
+    def field(fragment, names):
+        for name in names:
+            pattern = rf"[\"']?{re.escape(name)}[\"']?\s*:\s*(?:[\"']([^\"']*)[\"']|(-?\d+(?:\.\d+)?))"
+            match = re.search(pattern, fragment, flags=re.I)
+            if match:
+                return match.group(1) if match.group(1) is not None else match.group(2)
+        return ""
+
+    def event_date(dateline):
         try:
-            value, _ = decoder.raw_decode(payload[match.start():])
-        except (ValueError, TypeError):
+            stamp = float(dateline)
+            return datetime.fromtimestamp(stamp, tz=timezone.utc).astimezone(ZoneInfo("Asia/Manila")).date()
+        except (TypeError, ValueError, OverflowError, OSError):
+            return None
+
+    records = []
+    fragments = re.findall(
+        r"\{[^{}]{0,5000}?[\"']currency[\"']\s*:\s*[\"']USD[\"'][^{}]{0,5000}?\}",
+        payload,
+        flags=re.I | re.S,
+    )
+
+    for fragment in fragments:
+        impact = field(fragment, ("impactName", "impact", "impactTitle", "importance")).lower()
+        if "high" not in impact:
             continue
-        if isinstance(value, (dict, list)):
-            candidates.append(value)
+        dateline = field(fragment, ("dateline", "timestamp", "date", "datetime"))
+        if dateline and event_date(dateline) != today:
+            continue
+        title = field(fragment, ("name", "title", "event", "eventName", "eventTitle", "soloTitle", "soloTitleFull", "description"))
+        time_label = field(fragment, ("timeLabel", "time", "eventTime"))
+        if not title:
+            continue
+        label = f"{time_label} | USD | High | {title}" if time_label else f"USD | High | {title}"
+        label = re.sub(r"\s+", " ", label).strip()
+        if label not in records:
+            records.append(label)
 
-    def walk(value):
-        if isinstance(value, dict):
-            keys = {str(k).lower(): v for k, v in value.items()}
-            currency = str(keys.get("currency", keys.get("currencycode", keys.get("ccy", ""))) or "").upper()
-            impact = str(keys.get("impact", keys.get("impactlevel", keys.get("importance", ""))) or "").lower()
-            title = keys.get("title") or keys.get("event") or keys.get("eventname") or keys.get("name") or keys.get("description")
-            raw_date = keys.get("date") or keys.get("datetime") or keys.get("timestamp") or keys.get("start")
-            raw_time = keys.get("time") or keys.get("eventtime") or ""
-            text = " ".join(str(value) for value in (title, raw_date, raw_time, currency, impact) if value not in (None, ""))
-            if currency == "USD" and "high" in impact and title and text:
-                date_ok = str(today) in text or today.strftime("%b").lower() in text.lower() or today.strftime("%B").lower() in text.lower()
-                if date_ok:
-                    records.append(f"{raw_date} {raw_time} | USD | High | {str(title).strip()}")
-            for child in value.values():
-                walk(child)
-        elif isinstance(value, list):
-            for child in value:
-                walk(child)
-
-    for candidate in candidates:
-        walk(candidate)
-
-    unique = []
-    for record in records:
-        normalized = re.sub(r"\s+", " ", record).strip()
-        if normalized not in unique:
-            unique.append(normalized)
-    return unique
+    return records[:20]
 
 def _forex_event_candidates(source, today):
     """Extract verified USD high-impact event blocks from Forex Factory text.

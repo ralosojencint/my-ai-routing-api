@@ -2064,19 +2064,13 @@ async def research_pipeline(query):
 
 
 def _forex_structured_records(payload, today):
-    """Extract USD high-impact events from Forex Factory's embedded calendar data.
-
-    The page contains JavaScript and nested objects, so balanced-brace scanning can
-    select parent objects or unrelated nested objects. Instead, split the embedded
-    calendar stream at each numeric event ``id`` and validate fields within that
-    event-sized segment only.
-    """
+    """Extract verified USD high-impact Forex Factory events."""
     if not payload:
         return []
 
     def field(fragment, names):
         for name in names:
-            pattern = rf'(?<![A-Za-z0-9_])["\']?{re.escape(name)}["\']?(?![A-Za-z0-9_])\s*:\s*(?:["\']([^"\']*)["\']|(-?\d+(?:\.\d+)?))'
+            pattern = rf"(?<![A-Za-z0-9_])(?:[\"']{re.escape(name)}[\"']|{re.escape(name)})\s*:\s*(?:[\"']([^\"']*)[\"']|(-?\d+(?:\.\d+)?))"
             match = re.search(pattern, fragment, flags=re.I | re.S)
             if match:
                 return (match.group(1) if match.group(1) is not None else match.group(2)).strip()
@@ -2089,37 +2083,58 @@ def _forex_structured_records(payload, today):
         except (TypeError, ValueError, OverflowError, OSError):
             return None
 
-    # Each calendar event has a numeric id. Bound each event to the next id so
-    # CHF/EUR/other event fields cannot be borrowed by a USD event.
-    id_matches = list(re.finditer(r'(?<![A-Za-z0-9_])["\']id["\']\s*:\s*\d+', payload, flags=re.I))
+    def matching_object(text, anchor):
+        left = text.rfind("{", 0, anchor)
+        while left >= 0:
+            depth = 0
+            quoted = None
+            escaped = False
+            for pos in range(left, len(text)):
+                ch = text[pos]
+                if quoted:
+                    if escaped:
+                        escaped = False
+                    elif ch == "\\":
+                        escaped = True
+                    elif ch == quoted:
+                        quoted = None
+                    continue
+                if ch in ('"', "'"):
+                    quoted = ch
+                elif ch == "{":
+                    depth += 1
+                elif ch == "}":
+                    depth -= 1
+                    if depth == 0:
+                        if pos >= anchor:
+                            return text[left:pos + 1]
+                        break
+            left = text.rfind("{", 0, left)
+        return ""
+
+    matches = list(re.finditer(r"(?:[\"']currency[\"']|currency)\s*:\s*[\"']([^\"']+)[\"']", payload, flags=re.I))
     records = []
-    for index, match in enumerate(id_matches):
-        left = match.start()
-        right = id_matches[index + 1].start() if index + 1 < len(id_matches) else len(payload)
-        fragment = payload[left:right]
-
-        currency = field(fragment, ("currency",)).upper()
-        if currency != "USD":
+    seen = set()
+    for match in matches:
+        if match.group(1).upper() != "USD":
             continue
-
+        fragment = matching_object(payload, match.start())
+        if not fragment or fragment in seen:
+            continue
+        seen.add(fragment)
         impact = field(fragment, ("impactName", "impactTitle", "impact", "importance")).lower()
         if "high" not in impact:
             continue
-
-        dateline = field(fragment, ("dateline", "timestamp", "datetime"))
-        if not dateline or event_date(dateline) != today:
+        if event_date(field(fragment, ("dateline", "timestamp", "datetime"))) != today:
             continue
-
         title = field(fragment, ("name", "soloTitleFull", "soloTitle", "trimmedPrefixedName", "prefixedName", "title", "eventName", "eventTitle"))
         time_label = field(fragment, ("timeLabel", "time", "eventTime"))
         if not title:
             continue
-
-        label = f"{time_label} | {currency} | High | {title}" if time_label else f"{currency} | High | {title}"
+        label = f"{time_label} | USD | High | {title}" if time_label else f"USD | High | {title}"
         label = re.sub(r"\s+", " ", label).strip()
         if label not in records:
             records.append(label)
-
     return records[:20]
 
 def _forex_event_candidates(source, today):

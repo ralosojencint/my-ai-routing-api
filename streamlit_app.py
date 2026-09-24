@@ -2143,6 +2143,36 @@ def _forex_structured_records(payload, today):
         if label not in seen:
             seen.add(label)
             records.append(label)
+    # Fallback for Forex Factory's serialized event rows: the object-boundary
+    # scan can miss records when braces are embedded in framework payloads.
+    # Anchor on an explicit USD currency field and inspect only a bounded row
+    # window, never the entire page.
+    if not records:
+        usd_matches = list(re.finditer(
+            r"(?:[\"\\']currency[\"\\']\s*:\s*[\"\\']USD[\"\\'])",
+            payload,
+            flags=re.I,
+        ))
+        for match in usd_matches:
+            start = max(0, payload.rfind("{", 0, match.start()))
+            end = payload.find("}", match.end())
+            if start < 0 or end < 0:
+                continue
+            fragment = payload[start:end + 1]
+            impact = field(fragment, ("impactName", "impactTitle", "impact", "importance")).lower()
+            title = field(fragment, ("soloTitleFull", "soloTitle", "trimmedPrefixedName", "prefixedName", "name", "title", "eventName", "eventTitle"))
+            time_label = field(fragment, ("timeLabel", "time", "eventTime"))
+            timestamp = field(fragment, ("dateline", "timestamp", "datetime", "date"))
+            if "high" not in impact or not title:
+                continue
+            if timestamp and event_date(timestamp) not in (today, None):
+                continue
+            label = f"{time_label} | USD | High | {title}" if time_label else f"USD | High | {title}"
+            label = re.sub(r"\s+", " ", label).strip()
+            if label not in seen:
+                seen.add(label)
+                records.append(label)
+
     return records[:20]
 
 def _forex_event_candidates(source, today):

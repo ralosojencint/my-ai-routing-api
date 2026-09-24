@@ -2117,17 +2117,15 @@ def _forex_structured_records(payload, today):
                 spans.append((start, pos + 1))
         return spans
 
-    # A leaf object has no nested braces. These are the safest event units.
-    spans = object_spans(payload)
-    leaf_fragments = []
-    for start, end in spans:
-        fragment = payload[start:end]
-        if "{" not in fragment[1:-1] and "}" not in fragment[1:-1]:
-            leaf_fragments.append(fragment)
+    # Inspect the smallest balanced object that contains the event fields.
+    # Event objects may contain nested metadata, so requiring a brace-free
+    # leaf can discard valid events entirely.
+    spans = sorted(object_spans(payload), key=lambda item: item[1] - item[0])
 
     records = []
     seen = set()
-    for fragment in leaf_fragments:
+    for start, end in spans:
+        fragment = payload[start:end]
         currency = field(fragment, ("currency",)).upper()
         impact = field(fragment, ("impactName", "impactTitle", "impact", "importance")).lower()
         timestamp = field(fragment, ("dateline", "timestamp", "datetime", "date"))

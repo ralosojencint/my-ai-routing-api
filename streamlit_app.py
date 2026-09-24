@@ -2143,22 +2143,24 @@ def _forex_structured_records(payload, today):
         if label not in seen:
             seen.add(label)
             records.append(label)
-    # Fallback for Forex Factory's serialized event rows: the object-boundary
-    # scan can miss records when braces are embedded in framework payloads.
-    # Anchor on an explicit USD currency field and inspect only a bounded row
-    # window, never the entire page.
+    # Fallback for serialized rows whose braces are escaped, embedded, or
+    # shared with framework objects. Normalize escaped JSON quotes first, then
+    # inspect a bounded neighborhood around each explicit USD field.
     if not records:
+        normalized_payload = payload.replace(r'\"', '"')
         usd_matches = list(re.finditer(
-            r"(?:[\"\\']currency[\"\\']\s*:\s*[\"\\']USD[\"\\'])",
-            payload,
+            r"[\"']currency[\"']\s*:\s*[\"']USD[\"']",
+            normalized_payload,
             flags=re.I,
         ))
+        if usd_matches:
+            st.session_state.activity.append(
+                f"Forex structured scan: explicit_usd_fields={len(usd_matches)}"
+            )
         for match in usd_matches:
-            start = max(0, payload.rfind("{", 0, match.start()))
-            end = payload.find("}", match.end())
-            if start < 0 or end < 0:
-                continue
-            fragment = payload[start:end + 1]
+            left = max(0, match.start() - 1800)
+            right = min(len(normalized_payload), match.end() + 1800)
+            fragment = normalized_payload[left:right]
             impact = field(fragment, ("impactName", "impactTitle", "impact", "importance")).lower()
             title = field(fragment, ("soloTitleFull", "soloTitle", "trimmedPrefixedName", "prefixedName", "name", "title", "eventName", "eventTitle"))
             time_label = field(fragment, ("timeLabel", "time", "eventTime"))

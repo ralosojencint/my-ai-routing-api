@@ -2064,11 +2064,11 @@ async def research_pipeline(query):
 
 
 def _forex_structured_records(payload, today):
-    """Extract USD/high-impact events from Forex Factory's embedded JS objects.
+    """Extract USD/high-impact events from embedded calendar objects.
 
-    The page is JavaScript, not guaranteed to be valid JSON. We therefore scan
-    every balanced object while respecting quoted strings, then validate fields
-    from the same object only. This avoids combining fields from adjacent events.
+    Parse leaf object boundaries first. Parent objects can contain several
+    neighboring events, so reading the first ``currency``/``name`` from a
+    large parent object can incorrectly combine fields from different rows.
     """
     if not payload:
         return []
@@ -2076,63 +2076,70 @@ def _forex_structured_records(payload, today):
     def field(fragment, names):
         for name in names:
             pattern = rf"(?<![A-Za-z0-9_])(?:[\"']{re.escape(name)}[\"']|{re.escape(name)})\s*:\s*(?:[\"']([^\"']*)[\"']|(-?\d+(?:\.\d+)?))"
-            m = re.search(pattern, fragment, flags=re.I)
-            if m:
-                return (m.group(1) if m.group(1) is not None else m.group(2) or "").strip()
+            match = re.search(pattern, fragment, flags=re.I)
+            if match:
+                return (match.group(1) if match.group(1) is not None else match.group(2) or "").strip()
         return ""
 
     def event_date(value):
         try:
-            return datetime.fromtimestamp(float(value), tz=timezone.utc).astimezone(
+            number = float(value)
+            # Some providers use Unix milliseconds.
+            if number > 10_000_000_000:
+                number /= 1000.0
+            return datetime.fromtimestamp(number, tz=timezone.utc).astimezone(
                 ZoneInfo("Asia/Manila")
             ).date()
         except (TypeError, ValueError, OverflowError, OSError):
             return None
 
-    def balanced_objects(text):
-        objects = []
-        for start in (m.start() for m in re.finditer(r"\{", text)):
-            depth = 0
-            quote = None
-            escaped = False
-            for pos in range(start, len(text)):
-                ch = text[pos]
-                if quote is not None:
-                    if escaped:
-                        escaped = False
-                    elif ch == "\\":
-                        escaped = True
-                    elif ch == quote:
-                        quote = None
-                    continue
-                if ch in ("'", '"', "`"):
-                    quote = ch
-                elif ch == "{":
-                    depth += 1
-                elif ch == "}":
-                    depth -= 1
-                    if depth == 0:
-                        objects.append(text[start:pos + 1])
-                        break
-                if depth < 0:
-                    break
-        return objects
+    def object_spans(text):
+        """Return balanced object spans while respecting quoted strings."""
+        stack = []
+        spans = []
+        quote = None
+        escaped = False
+        for pos, ch in enumerate(text):
+            if quote is not None:
+                if escaped:
+                    escaped = False
+                elif ch == "\\":
+                    escaped = True
+                elif ch == quote:
+                    quote = None
+                continue
+            if ch in ("'", '"', "`"):
+                quote = ch
+            elif ch == "{":
+                stack.append(pos)
+            elif ch == "}" and stack:
+                start = stack.pop()
+                spans.append((start, pos + 1))
+        return spans
+
+    # A leaf object has no nested braces. These are the safest event units.
+    spans = object_spans(payload)
+    leaf_fragments = []
+    for start, end in spans:
+        fragment = payload[start:end]
+        if "{" not in fragment[1:-1] and "}" not in fragment[1:-1]:
+            leaf_fragments.append(fragment)
 
     records = []
     seen = set()
-    for fragment in balanced_objects(payload):
+    for fragment in leaf_fragments:
         currency = field(fragment, ("currency",)).upper()
-        if currency != "USD":
-            continue
         impact = field(fragment, ("impactName", "impactTitle", "impact", "importance")).lower()
-        if "high" not in impact:
-            continue
-        if event_date(field(fragment, ("dateline", "timestamp", "datetime"))) != today:
-            continue
+        timestamp = field(fragment, ("dateline", "timestamp", "datetime", "date"))
         title = field(fragment, ("name", "soloTitleFull", "soloTitle", "trimmedPrefixedName", "prefixedName", "title", "eventName", "eventTitle"))
         time_label = field(fragment, ("timeLabel", "time", "eventTime"))
-        if not title:
+
+        if currency != "USD" or "high" not in impact or not title:
             continue
+        if timestamp and event_date(timestamp) != today:
+            continue
+        # If a leaf has no date field, retain it only when the caller's page
+        # is already date-scoped; the surrounding pipeline supplies that page.
         label = f"{time_label} | USD | High | {title}" if time_label else f"USD | High | {title}"
         label = re.sub(r"\s+", " ", label).strip()
         if label not in seen:

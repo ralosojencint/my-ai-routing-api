@@ -2064,64 +2064,66 @@ async def research_pipeline(query):
 
 
 def _forex_structured_records(payload, today):
-    """Extract verified USD high-impact Forex Factory events."""
+    """Extract USD/high-impact events from Forex Factory's embedded JS objects.
+
+    The page is JavaScript, not guaranteed to be valid JSON. We therefore scan
+    every balanced object while respecting quoted strings, then validate fields
+    from the same object only. This avoids combining fields from adjacent events.
+    """
     if not payload:
         return []
 
     def field(fragment, names):
         for name in names:
             pattern = rf"(?<![A-Za-z0-9_])(?:[\"']{re.escape(name)}[\"']|{re.escape(name)})\s*:\s*(?:[\"']([^\"']*)[\"']|(-?\d+(?:\.\d+)?))"
-            match = re.search(pattern, fragment, flags=re.I | re.S)
-            if match:
-                return (match.group(1) if match.group(1) is not None else match.group(2)).strip()
+            m = re.search(pattern, fragment, flags=re.I)
+            if m:
+                return (m.group(1) if m.group(1) is not None else m.group(2) or "").strip()
         return ""
 
-    def event_date(dateline):
+    def event_date(value):
         try:
-            stamp = float(dateline)
-            return datetime.fromtimestamp(stamp, tz=timezone.utc).astimezone(ZoneInfo("Asia/Manila")).date()
+            return datetime.fromtimestamp(float(value), tz=timezone.utc).astimezone(
+                ZoneInfo("Asia/Manila")
+            ).date()
         except (TypeError, ValueError, OverflowError, OSError):
             return None
 
-    def matching_object(text, anchor):
-        left = text.rfind("{", 0, anchor)
-        while left >= 0:
+    def balanced_objects(text):
+        objects = []
+        for start in (m.start() for m in re.finditer(r"\{", text)):
             depth = 0
-            quoted = None
+            quote = None
             escaped = False
-            for pos in range(left, len(text)):
+            for pos in range(start, len(text)):
                 ch = text[pos]
-                if quoted:
+                if quote is not None:
                     if escaped:
                         escaped = False
                     elif ch == "\\":
                         escaped = True
-                    elif ch == quoted:
-                        quoted = None
+                    elif ch == quote:
+                        quote = None
                     continue
-                if ch in ('"', "'"):
-                    quoted = ch
+                if ch in ("'", '"', "`"):
+                    quote = ch
                 elif ch == "{":
                     depth += 1
                 elif ch == "}":
                     depth -= 1
                     if depth == 0:
-                        if pos >= anchor:
-                            return text[left:pos + 1]
+                        objects.append(text[start:pos + 1])
                         break
-            left = text.rfind("{", 0, left)
-        return ""
+                if depth < 0:
+                    break
+        return objects
 
-    matches = list(re.finditer(r"(?:[\"']currency[\"']|currency)\s*:\s*[\"']([^\"']+)[\"']", payload, flags=re.I))
     records = []
     seen = set()
-    for match in matches:
-        if match.group(1).upper() != "USD":
+    for fragment in balanced_objects(payload):
+        currency = field(fragment, ("currency",)).upper()
+        if currency != "USD":
             continue
-        fragment = matching_object(payload, match.start())
-        if not fragment or fragment in seen:
-            continue
-        seen.add(fragment)
         impact = field(fragment, ("impactName", "impactTitle", "impact", "importance")).lower()
         if "high" not in impact:
             continue
@@ -2133,7 +2135,8 @@ def _forex_structured_records(payload, today):
             continue
         label = f"{time_label} | USD | High | {title}" if time_label else f"USD | High | {title}"
         label = re.sub(r"\s+", " ", label).strip()
-        if label not in records:
+        if label not in seen:
+            seen.add(label)
             records.append(label)
     return records[:20]
 

@@ -2064,83 +2064,58 @@ async def research_pipeline(query):
 
 
 def _forex_structured_records(payload, today):
-    """Extract verified USD/high-impact events without cross-event field mixing.
-
-    Forex Factory embeds event rows as serialized objects. The reliable fallback
-    boundary is the event's dateline: each event record has one dateline and the
-    next dateline starts the next record. Never combine fields from a broad
-    character neighborhood around a currency field.
-    """
+    """Extract USD/high-impact Forex Factory rows without cross-event mixing."""
     if not payload:
         return []
-
-    normalized = payload.replace(r'\"', '"').replace(r"\'", "'")
-
+    text = payload.replace(r'\\"', '"').replace(r"\\'", "'")
     def field(fragment, names):
         for name in names:
             pattern = rf"(?<![A-Za-z0-9_])(?:[\"']{re.escape(name)}[\"']|{re.escape(name)})\s*:\s*(?:[\"']([^\"']*)[\"']|(-?\d+(?:\.\d+)?))"
             match = re.search(pattern, fragment, flags=re.I)
             if match:
-                return (match.group(1) if match.group(1) is not None else match.group(2) or "").strip()
-        return ""
-
-    def event_date(value):
+                return (match.group(1) if match.group(1) is not None else match.group(2) or '').strip()
+        return ''
+    def balanced_objects(source):
+        result, start, depth, quote, escaped = [], None, 0, None, False
+        for pos, ch in enumerate(source):
+            if quote:
+                if escaped: escaped = False
+                elif ch == '\\': escaped = True
+                elif ch == quote: quote = None
+                continue
+            if ch in ('"', "'", '`'): quote = ch
+            elif ch == '{':
+                if depth == 0: start = pos
+                depth += 1
+            elif ch == '}':
+                if depth:
+                    depth -= 1
+                    if depth == 0 and start is not None:
+                        result.append(source[start:pos + 1]); start = None
+        return result
+    def timestamp_dates(value):
         try:
             number = float(value)
-            if number > 10_000_000_000:
-                number /= 1000.0
-            return datetime.fromtimestamp(number, tz=timezone.utc).astimezone(
-                ZoneInfo("Asia/Manila")
-            ).date()
+            if number > 10_000_000_000: number /= 1000.0
+            dt = datetime.fromtimestamp(number, tz=timezone.utc)
+            return {dt.date(), dt.astimezone(ZoneInfo('Asia/Manila')).date()}
         except (TypeError, ValueError, OverflowError, OSError):
-            return None
-
-    # Split at each event dateline. This keeps title/currency/impact/time in
-    # the same event segment and prevents USD from one event being paired with
-    # the title of a neighboring GBP/EUR event.
-    dateline_matches = list(re.finditer(
-        r"(?<![A-Za-z0-9_])(?:[\"']?dateline[\"']?)\s*:",
-        normalized,
-        flags=re.I,
-    ))
-    segments = []
-    for index, match in enumerate(dateline_matches):
-        # Event titles commonly appear before dateline inside the same object.
-        # Start at the nearest opening brace, not at the dateline itself.
-        start = normalized.rfind("{", 0, match.start())
-        if start < 0:
-            start = match.start()
-        end = dateline_matches[index + 1].start() if index + 1 < len(dateline_matches) else len(normalized)
-        segments.append(normalized[start:end])
-
-    records = []
-    seen = set()
-    explicit_usd = 0
-    for segment in segments:
-        currency = field(segment, ("currency",)).upper()
-        if currency == "USD":
-            explicit_usd += 1
-        impact = field(segment, ("impactName", "impactTitle", "impact", "importance")).lower()
-        title = field(segment, ("soloTitleFull", "soloTitle", "trimmedPrefixedName", "prefixedName", "name", "title", "eventName", "eventTitle"))
-        time_label = field(segment, ("timeLabel", "time", "eventTime"))
-        timestamp = field(segment, ("dateline", "timestamp", "datetime", "date"))
-
-        if currency != "USD" or "high" not in impact or not title:
-            continue
-        if timestamp and event_date(timestamp) != today:
-            continue
-
-        label = f"{time_label} | USD | High | {title}" if time_label else f"USD | High | {title}"
-        label = re.sub(r"\s+", " ", label).strip()
-        if label not in seen:
-            seen.add(label)
-            records.append(label)
-
-    if dateline_matches:
-        st.session_state.activity.append(
-            f"Forex strict event scan: dateline_segments={len(segments)} explicit_usd_segments={explicit_usd} verified_records={len(records)}"
-        )
-
+            return set()
+    tokens = {today.strftime(x).lower() for x in ('%Y-%m-%d', '%b %-d, %Y', '%B %-d, %Y', '%b %-d', '%B %-d')}
+    records, seen = [], set()
+    for fragment in balanced_objects(text):
+        if field(fragment, ('currency',)).upper() != 'USD': continue
+        impact = ' '.join(field(fragment, names).lower() for names in (('impactName',), ('impactTitle',), ('impact',), ('importance',), ('impactClass',)))
+        if not ('high' in impact or 'red' in impact): continue
+        explicit_date = field(fragment, ('date', 'eventDate', 'day'))
+        dateline = field(fragment, ('dateline', 'timestamp', 'datetime'))
+        if not any(token in explicit_date.lower() for token in tokens) and today not in timestamp_dates(dateline): continue
+        title = field(fragment, ('name', 'soloTitleFull', 'soloTitle', 'trimmedPrefixedName', 'prefixedName', 'title', 'eventName', 'eventTitle'))
+        if not title: continue
+        time_label = field(fragment, ('timeLabel', 'time', 'eventTime'))
+        label = f'{time_label} | USD | High | {title}' if time_label else f'USD | High | {title}'
+        label = re.sub(r'\s+', ' ', label).strip()
+        if label not in seen: seen.add(label); records.append(label)
     return records[:20]
 
 def _forex_event_candidates(source, today):

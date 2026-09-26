@@ -2076,7 +2076,18 @@ def _forex_structured_records(payload, today):
                 return (match.group(1) if match.group(1) is not None else match.group(2) or '').strip()
         return ''
     def balanced_objects(source):
-        result, start, depth, quote, escaped = [], None, 0, None, False
+        # Record every closed {...} span at any nesting depth (a stack of
+        # start positions), not only spans that return to depth 0. Real
+        # Forex Factory payloads nest each event inside wrapper objects
+        # (day/events buckets), so the previous depth==0-only check merged
+        # every event in the page into a single fragment and mixed fields
+        # across events (confirmed: it read an outer day-bucket's own
+        # dateline instead of the actual event's dateline). Capturing every
+        # closed brace span isolates each innermost event object on its
+        # own; outer wrapper objects are also captured, which is harmless
+        # since they don't carry their own currency field and are filtered
+        # out below the same as any other non-matching fragment.
+        result, starts, quote, escaped = [], [], None, False
         for pos, ch in enumerate(source):
             if quote:
                 if escaped: escaped = False
@@ -2085,13 +2096,11 @@ def _forex_structured_records(payload, today):
                 continue
             if ch in ('"', "'", '`'): quote = ch
             elif ch == '{':
-                if depth == 0: start = pos
-                depth += 1
+                starts.append(pos)
             elif ch == '}':
-                if depth:
-                    depth -= 1
-                    if depth == 0 and start is not None:
-                        result.append(source[start:pos + 1]); start = None
+                if starts:
+                    start = starts.pop()
+                    result.append(source[start:pos + 1])
         return result
     def timestamp_dates(value):
         try:

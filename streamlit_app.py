@@ -1207,7 +1207,71 @@ async def forex_research(query):
         )
         with urlopen(request, timeout=12) as response:
             page_html = response.read().decode("utf-8", errors="ignore")
-        
+            _diag_response_url = response.geturl()
+            _diag_response_status = getattr(response, "status", None)
+            if _diag_response_status is None:
+                _diag_response_status = response.getcode()
+
+        # --- TEMPORARY REQUEST/RESPONSE DATE-HANDLING DIAGNOSTIC (additive only) ---
+        # Reports exactly what URL was requested, what URL the server actually
+        # served (after any redirects), and the HTTP status -- does not alter
+        # calendar_url, the request, or anything downstream of it.
+        st.session_state.activity.append(
+            f"Forex request/response diagnostic: requested_url={calendar_url} "
+            f"final_url={_diag_response_url} "
+            f"http_status={_diag_response_status} "
+            f"today={today.isoformat()}"
+        )
+        # --- END REQUEST/RESPONSE DIAGNOSTIC ---
+
+        # --- TEMPORARY FOREX FACTORY NAVIGATION/TITLE DIAGNOSTIC (additive only) ---
+        # Extracts what the page itself displays as its current day/title/date
+        # range, purely for comparison against calendar_url and today. This
+        # extraction is NOT fed into structured_records, combined_text,
+        # page_text, or any object _forex_structured_records/
+        # _forex_event_candidates/forex_pipeline consume -- it only appends
+        # to st.session_state.activity.
+        _diag_title_match = re.search(r"<title[^>]*>(.*?)</title>", page_html, flags=re.I | re.S)
+        _diag_page_title = re.sub(r"\s+", " ", _diag_title_match.group(1)).strip() if _diag_title_match else "(not found)"
+
+        # A canonical/og:url meta tag, if present, often reflects the
+        # server's own notion of the current page URL after any internal
+        # day-normalization -- separate from response.geturl() which only
+        # reflects HTTP-level redirects.
+        _diag_canonical_match = re.search(
+            r'<link[^>]*rel=["\']canonical["\'][^>]*href=["\']([^"\']+)["\']',
+            page_html, flags=re.I,
+        )
+        if not _diag_canonical_match:
+            _diag_canonical_match = re.search(
+                r'<meta[^>]*property=["\']og:url["\'][^>]*content=["\']([^"\']+)["\']',
+                page_html, flags=re.I,
+            )
+        _diag_canonical_url = _diag_canonical_match.group(1) if _diag_canonical_match else "(not found)"
+
+        # A day=<mon><day>.<year> style link elsewhere in the markup (e.g. a
+        # "next/previous day" nav link, or a self-referential link the page
+        # renders for the day it considers current) -- reported as-is,
+        # de-duplicated, first few occurrences only.
+        _diag_day_links = re.findall(r'calendar\?day=([a-zA-Z]{3}\d{1,2}\.\d{4})', page_html)
+        _diag_day_links_unique = list(dict.fromkeys(_diag_day_links))[:5]
+
+        # A start/end date range, if the page renders one explicitly (some
+        # calendar UIs show a week/range header near the top).
+        _diag_range_match = re.search(
+            r'(?:data-date-range|date-range|calendar__range)[^>]*>([^<]{1,80})<',
+            page_html, flags=re.I,
+        )
+        _diag_date_range = re.sub(r"\s+", " ", _diag_range_match.group(1)).strip() if _diag_range_match else "(not found)"
+
+        st.session_state.activity.append(
+            f"Forex navigation diagnostic: page_title=\"{_diag_page_title}\" "
+            f"canonical_url={_diag_canonical_url} "
+            f"day_links_found={_diag_day_links_unique or '(none)'} "
+            f"date_range_text=\"{_diag_date_range}\""
+        )
+        # --- END NAVIGATION DIAGNOSTIC ---
+
         # TEMPORARY FOREX FACTORY DIAGNOSTIC — DO NOT MODIFY EXTRACTION
         # Capture response structure only. Remove after investigation.
         script_matches = re.findall(

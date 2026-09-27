@@ -2112,6 +2112,57 @@ def _forex_structured_records(payload, today):
             return set()
     tokens = {today.strftime(x).lower() for x in ('%Y-%m-%d', '%b %-d, %Y', '%B %-d, %Y', '%b %-d', '%B %-d')}
     records, seen = [], set()
+    # --- TEMPORARY DIAGNOSTIC INSTRUMENTATION (read-only; no filtering behavior changed) ---
+    # Distinguishes: (1) balanced_objects() finding no fragments at all, (2) fragments
+    # found but currency extraction failing/non-USD, (3) USD fragments found but their
+    # datelines resolving to a day other than `today`, (4) Sep-27 USD/high fragments
+    # found but rejected by a later gate. Every counter below mirrors an existing
+    # condition without altering it; no continue/branch order changes below this block.
+    # Remove this block once the failing stage is identified.
+    _diag_fragments = balanced_objects(text)
+    _diag_balanced_objects_count = len(_diag_fragments)
+    _diag_usd_fragment_count = 0
+    _diag_usd_high_impact_fragment_count = 0
+    _diag_samples = []
+    for _diag_fragment in _diag_fragments:
+        _diag_currency = field(_diag_fragment, ('currency',)).upper()
+        if _diag_currency != 'USD':
+            continue
+        _diag_usd_fragment_count += 1
+        _diag_impact_name = field(_diag_fragment, ('impactName',))
+        _diag_impact_class = field(_diag_fragment, ('impactClass',))
+        _diag_impact_combo = ' '.join(field(_diag_fragment, names).lower() for names in (('impactName',), ('impactTitle',), ('impact',), ('importance',), ('impactClass',)))
+        _diag_is_high = 'high' in _diag_impact_combo or 'red' in _diag_impact_combo
+        if _diag_is_high:
+            _diag_usd_high_impact_fragment_count += 1
+        _diag_dateline_raw = field(_diag_fragment, ('dateline', 'timestamp', 'datetime'))
+        _diag_utc_date = ''
+        _diag_manila_date = ''
+        try:
+            _diag_number = float(_diag_dateline_raw)
+            if _diag_number > 10_000_000_000: _diag_number /= 1000.0
+            _diag_dt_utc = datetime.fromtimestamp(_diag_number, tz=timezone.utc)
+            _diag_utc_date = _diag_dt_utc.date().isoformat()
+            _diag_manila_date = _diag_dt_utc.astimezone(ZoneInfo('Asia/Manila')).date().isoformat()
+        except (TypeError, ValueError, OverflowError, OSError):
+            pass
+        _diag_title = field(_diag_fragment, ('name', 'soloTitleFull', 'soloTitle', 'trimmedPrefixedName', 'prefixedName', 'title', 'eventName', 'eventTitle'))
+        if len(_diag_samples) < 8:
+            _diag_samples.append(
+                f"currency={_diag_currency} | impactName={_diag_impact_name or '(empty)'} | "
+                f"impactClass={_diag_impact_class or '(empty)'} | dateline={_diag_dateline_raw or '(empty)'} | "
+                f"utc_date={_diag_utc_date or '(unparsed)'} | manila_date={_diag_manila_date or '(unparsed)'} | "
+                f"title={_diag_title or '(empty)'}"
+            )
+    st.session_state.activity.append(
+        f"Forex event diagnostic: balanced_objects_count={_diag_balanced_objects_count} "
+        f"usd_fragment_count={_diag_usd_fragment_count} "
+        f"usd_high_impact_fragment_count={_diag_usd_high_impact_fragment_count} "
+        f"today={today.isoformat()}"
+    )
+    for _diag_line in _diag_samples:
+        st.session_state.activity.append("Forex event diagnostic sample: " + _diag_line)
+    # --- END TEMPORARY DIAGNOSTIC INSTRUMENTATION ---
     for fragment in balanced_objects(text):
         if field(fragment, ('currency',)).upper() != 'USD': continue
         impact = ' '.join(field(fragment, names).lower() for names in (('impactName',), ('impactTitle',), ('impact',), ('importance',), ('impactClass',)))

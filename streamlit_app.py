@@ -1272,6 +1272,120 @@ async def forex_research(query):
         )
         # --- END NAVIGATION DIAGNOSTIC ---
 
+        # --- TEMPORARY RAW-HTML USD/CURRENCY REPRESENTATION DIAGNOSTIC (additive only) ---
+        # Operates directly on page_html via plain string/regex search. Does
+        # NOT call field() or balanced_objects() and does NOT feed
+        # structured_records, combined_text, page_text, or any object
+        # _forex_structured_records/_forex_event_candidates/forex_pipeline
+        # consume -- it only appends to st.session_state.activity. Purpose:
+        # determine where/how USD event data actually appears in the raw
+        # response before any parser change is considered.
+
+        def _diag_script_span_ranges(html_text):
+            # Byte ranges covered by every <script>...</script> region, used
+            # only to classify whether a later position falls inside one.
+            return [
+                (m.start(), m.end())
+                for m in re.finditer(r"<script\b[^>]*>.*?</script\s*>", html_text, flags=re.I | re.S)
+            ]
+
+        def _diag_in_script(pos, spans):
+            return any(s <= pos < e for s, e in spans)
+
+        def _diag_windows(html_text, needle, max_windows=10, half_width=500):
+            out = []
+            cursor = 0
+            while len(out) < max_windows:
+                idx = html_text.find(needle, cursor)
+                if idx == -1:
+                    break
+                w_start = max(0, idx - half_width)
+                w_end = min(len(html_text), idx + len(needle) + half_width)
+                out.append((idx, html_text[w_start:w_end]))
+                cursor = idx + len(needle)
+            return out
+
+        def _diag_classify(window_text, bare_value):
+            if re.search(r'"currency"\s*:\s*"' + re.escape(bare_value) + r'"', window_text):
+                return "JSON key:value (quoted key, quoted string value)"
+            if re.search(r'\bcurrency\s*:\s*"' + re.escape(bare_value) + r'"', window_text):
+                return "JS object literal (unquoted key, quoted string value)"
+            if re.search(re.escape(bare_value) + r'&quot;|&quot;' + re.escape(bare_value), window_text):
+                return "HTML-entity-encoded"
+            if re.search(r'\\"' + re.escape(bare_value) + r'\\"', window_text):
+                return "backslash-escaped JSON string"
+            if re.search(r'currencyNames|currencyList|currencyLabels|CURRENCY_', window_text, flags=re.I):
+                return "configuration/lookup table (e.g. currencyNames)"
+            if re.search(r'<[a-zA-Z][^>]*["\']' + re.escape(bare_value) + r'["\'][^>]*>', window_text):
+                return "inside an HTML tag/attribute"
+            return "unclassified (needs manual review)"
+
+        _diag_script_spans = _diag_script_span_ranges(page_html)
+
+        # Exact occurrence counts for the six requested literal targets.
+        _diag_target_counts = {
+            '"currency":"': page_html.count('"currency":"'),
+            '"currency":': page_html.count('"currency":'),
+            '"USD"': page_html.count('"USD"'),
+            '"impactName"': page_html.count('"impactName"'),
+            '"dateline"': page_html.count('"dateline"'),
+            '"timeLabel"': page_html.count('"timeLabel"'),
+        }
+        # Supplementary counts for representations a literal '"USD"'/'"currency"'
+        # search would miss entirely (found necessary during diagnostic
+        # construction -- an escaped or unquoted-key form does not contain the
+        # literal substring '"USD"' at all, so it would silently undercount
+        # without these).
+        _diag_usd_escaped_count = page_html.count('\\"USD\\"')
+        _diag_usd_html_entity_count = page_html.count('&quot;USD&quot;')
+        _diag_currency_unquoted_key_count = len(re.findall(r'(?<![A-Za-z0-9_"])currency\s*:', page_html))
+        _diag_supplemental_counts = {
+            'USD backslash-escaped': _diag_usd_escaped_count,
+            'USD HTML-entity': _diag_usd_html_entity_count,
+            'currency unquoted-key': _diag_currency_unquoted_key_count,
+        }
+
+        st.session_state.activity.append(
+            "Forex raw-HTML occurrence diagnostic: "
+            + " ".join(f"{k}={v}" for k, v in _diag_target_counts.items())
+            + " | supplemental: "
+            + " ".join(f"{k}={v}" for k, v in _diag_supplemental_counts.items())
+        )
+
+        # Up to 10 bounded ±500-char context windows for "USD", classified.
+        _diag_usd_windows = _diag_windows(page_html, '"USD"', max_windows=10, half_width=500)
+        if _diag_usd_windows:
+            for _diag_pos, _diag_ctx in _diag_usd_windows:
+                _diag_shape = _diag_classify(_diag_ctx, "USD")
+                _diag_in_scr = _diag_in_script(_diag_pos, _diag_script_spans)
+                st.session_state.activity.append(
+                    f'Forex "USD" occurrence: pos={_diag_pos} in_script={_diag_in_scr} '
+                    f"shape={_diag_shape} context={_diag_ctx}"
+                )
+        else:
+            st.session_state.activity.append(
+                'Forex "USD" occurrence: literal \'"USD"\' not found anywhere in page_html '
+                f"(supplemental backslash-escaped count={_diag_usd_escaped_count}, "
+                f"HTML-entity count={_diag_usd_html_entity_count})"
+            )
+
+        # Up to 10 bounded ±500-char context windows for "currency" (matches
+        # either '"currency":' or a bare '"currency"' occurrence).
+        _diag_currency_windows = _diag_windows(page_html, '"currency"', max_windows=10, half_width=500)
+        if _diag_currency_windows:
+            for _diag_pos, _diag_ctx in _diag_currency_windows:
+                _diag_in_scr = _diag_in_script(_diag_pos, _diag_script_spans)
+                st.session_state.activity.append(
+                    f'Forex "currency" occurrence: pos={_diag_pos} in_script={_diag_in_scr} '
+                    f"context={_diag_ctx}"
+                )
+        else:
+            st.session_state.activity.append(
+                'Forex "currency" occurrence: literal \'"currency"\' not found anywhere in page_html '
+                f"(unquoted-key count={_diag_currency_unquoted_key_count})"
+            )
+        # --- END RAW-HTML USD/CURRENCY REPRESENTATION DIAGNOSTIC ---
+
         # TEMPORARY FOREX FACTORY DIAGNOSTIC — DO NOT MODIFY EXTRACTION
         # Capture response structure only. Remove after investigation.
         script_matches = re.findall(

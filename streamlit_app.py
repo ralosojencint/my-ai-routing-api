@@ -1224,6 +1224,218 @@ async def forex_research(query):
         )
         # --- END REQUEST/RESPONSE DIAGNOSTIC ---
 
+        # --- TEMPORARY calendarComponentStates STRUCTURAL DIAGNOSTIC (additive only) ---
+        # Parses the raw page_html's `calendarComponentStates[n] = {...}`
+        # JavaScript assignment(s) directly and structurally: locates each
+        # block, then its `days` array, then each day's `events` array, then
+        # parses each individual event object with json.loads. Does NOT call
+        # balanced_objects() or field(), and does NOT feed structured_records,
+        # combined_text, page_text, or any object _forex_structured_records/
+        # _forex_event_candidates/forex_pipeline consume -- it only appends to
+        # st.session_state.activity. Purpose: determine whether the actual
+        # days[].events[] payload for the requested day contains USD events,
+        # independent of anything the existing balanced_objects()-based
+        # diagnostics found or missed.
+
+        def _diag_ccs_blocks(script_text):
+            # Returns list of (block_index_str, block_text) for every
+            # `calendarComponentStates[<n>] = {...}` assignment, using an
+            # independent, quote-aware brace-matcher scoped only to this
+            # single purpose (not balanced_objects()).
+            found = []
+            for m in re.finditer(r'calendarComponentStates\s*\[\s*\d+\s*\]\s*=\s*\{', script_text):
+                idx_m = re.search(r'\[\s*(\d+)\s*\]', m.group(0))
+                block_index = idx_m.group(1) if idx_m else "?"
+                brace_start = m.end() - 1
+                depth = 0
+                quote = None
+                escaped = False
+                end_pos = None
+                for pos in range(brace_start, len(script_text)):
+                    ch = script_text[pos]
+                    if quote:
+                        if escaped: escaped = False
+                        elif ch == '\\': escaped = True
+                        elif ch == quote: quote = None
+                        continue
+                    if ch in ('"', "'", '`'): quote = ch
+                    elif ch == '{': depth += 1
+                    elif ch == '}':
+                        depth -= 1
+                        if depth == 0:
+                            end_pos = pos
+                            break
+                if end_pos is not None:
+                    found.append((block_index, script_text[brace_start:end_pos + 1]))
+            return found
+
+        def _diag_balanced_span_end(text, open_pos, open_char, close_char):
+            depth = 0
+            quote = None
+            escaped = False
+            for pos in range(open_pos, len(text)):
+                ch = text[pos]
+                if quote:
+                    if escaped: escaped = False
+                    elif ch == '\\': escaped = True
+                    elif ch == quote: quote = None
+                    continue
+                if ch in ('"', "'", '`'): quote = ch
+                elif ch == open_char: depth += 1
+                elif ch == close_char:
+                    depth -= 1
+                    if depth == 0:
+                        return pos
+            return None
+
+        def _diag_objects_in_array(text, array_bracket_pos):
+            # Returns (start,end_inclusive) spans of every top-level {...}
+            # object directly inside the array opening at array_bracket_pos.
+            array_end = _diag_balanced_span_end(text, array_bracket_pos, '[', ']')
+            if array_end is None:
+                return []
+            inner = text[array_bracket_pos + 1:array_end]
+            offset = array_bracket_pos + 1
+            objects = []
+            depth = 0
+            quote = None
+            escaped = False
+            obj_start = None
+            for i, ch in enumerate(inner):
+                if quote:
+                    if escaped: escaped = False
+                    elif ch == '\\': escaped = True
+                    elif ch == quote: quote = None
+                    continue
+                if ch in ('"', "'", '`'): quote = ch
+                elif ch == '{':
+                    if depth == 0:
+                        obj_start = i
+                    depth += 1
+                elif ch == '}':
+                    depth -= 1
+                    if depth == 0 and obj_start is not None:
+                        objects.append((offset + obj_start, offset + i))
+                        obj_start = None
+            return objects
+
+        def _diag_dateline_to_dates(value):
+            try:
+                number = float(value)
+                if number > 10_000_000_000: number /= 1000.0
+                dt = datetime.fromtimestamp(number, tz=timezone.utc)
+                return dt.date().isoformat(), dt.astimezone(ZoneInfo('Asia/Manila')).date().isoformat()
+            except (TypeError, ValueError, OverflowError, OSError):
+                return "(unparsed)", "(unparsed)"
+
+        _diag_ccs_block_list = _diag_ccs_blocks(page_html)
+        st.session_state.activity.append(
+            f"Forex calendarComponentStates diagnostic: blocks_found={len(_diag_ccs_block_list)}"
+        )
+
+        _diag_all_days = []
+        _diag_all_events = []
+        for _diag_block_index, _diag_block_text in _diag_ccs_block_list:
+            _diag_days_key_m = re.search(r'["\']?days["\']?\s*:\s*\[', _diag_block_text)
+            if not _diag_days_key_m:
+                st.session_state.activity.append(
+                    f"Forex calendarComponentStates diagnostic: block={_diag_block_index} no 'days' key found"
+                )
+                continue
+            _diag_days_array_pos = _diag_block_text.index('[', _diag_days_key_m.start())
+            for _diag_ds, _diag_de in _diag_objects_in_array(_diag_block_text, _diag_days_array_pos):
+                _diag_day_text = _diag_block_text[_diag_ds:_diag_de + 1]
+                _diag_day_dateline_m = re.search(r'"dateline"\s*:\s*(-?\d+(?:\.\d+)?)', _diag_day_text)
+                _diag_day_date_m = re.search(r'"date"\s*:\s*"([^"]*)"', _diag_day_text)
+                _diag_day_dateline = _diag_day_dateline_m.group(1) if _diag_day_dateline_m else "(missing)"
+                _diag_day_date = _diag_day_date_m.group(1) if _diag_day_date_m else "(missing)"
+                _diag_events_key_m = re.search(r'["\']?events["\']?\s*:\s*\[', _diag_day_text)
+                _diag_day_events = []
+                if _diag_events_key_m:
+                    _diag_events_array_pos = _diag_day_text.index('[', _diag_events_key_m.start())
+                    for _diag_es, _diag_ee in _diag_objects_in_array(_diag_day_text, _diag_events_array_pos):
+                        _diag_event_text = _diag_day_text[_diag_es:_diag_ee + 1]
+                        try:
+                            _diag_parsed_event = json.loads(_diag_event_text)
+                            _diag_day_events.append(_diag_parsed_event)
+                            _diag_all_events.append(_diag_parsed_event)
+                        except json.JSONDecodeError:
+                            pass
+                _diag_all_days.append({
+                    "block_index": _diag_block_index,
+                    "date": _diag_day_date,
+                    "dateline": _diag_day_dateline,
+                    "event_count": len(_diag_day_events),
+                })
+
+        st.session_state.activity.append(
+            f"Forex calendarComponentStates diagnostic: days_found={len(_diag_all_days)} "
+            f"total_events={len(_diag_all_events)}"
+        )
+        for _diag_day_info in _diag_all_days:
+            st.session_state.activity.append(
+                f"Forex calendarComponentStates day: block={_diag_day_info['block_index']} "
+                f"date=\"{_diag_day_info['date']}\" dateline={_diag_day_info['dateline']} "
+                f"event_count={_diag_day_info['event_count']}"
+            )
+
+        _diag_ccs_currency_counts = {}
+        for _diag_ev in _diag_all_events:
+            _diag_ccs_currency = str(_diag_ev.get("currency", "(missing)")).upper()
+            _diag_ccs_currency_counts[_diag_ccs_currency] = _diag_ccs_currency_counts.get(_diag_ccs_currency, 0) + 1
+        _diag_ccs_currency_breakdown = ", ".join(
+            f"{k}={v}" for k, v in sorted(_diag_ccs_currency_counts.items(), key=lambda kv: -kv[1])
+        ) or "(none)"
+
+        _diag_ccs_usd_events = [e for e in _diag_all_events if str(e.get("currency", "")).upper() == "USD"]
+        _diag_ccs_usd_high_events = [
+            e for e in _diag_ccs_usd_events
+            if "high" in str(e.get("impactName", "")).lower() or "red" in str(e.get("impactClass", "")).lower()
+        ]
+
+        st.session_state.activity.append(
+            f"Forex calendarComponentStates currency diagnostic: "
+            f"currency_breakdown=[{_diag_ccs_currency_breakdown}] "
+            f"usd_event_count={len(_diag_ccs_usd_events)} "
+            f"usd_high_impact_event_count={len(_diag_ccs_usd_high_events)}"
+        )
+
+        if _diag_ccs_usd_events:
+            for _diag_usd_ev in _diag_ccs_usd_events:
+                _diag_usd_dateline = _diag_usd_ev.get("dateline")
+                if _diag_usd_dateline is not None:
+                    _diag_usd_utc_date, _diag_usd_manila_date = _diag_dateline_to_dates(_diag_usd_dateline)
+                else:
+                    _diag_usd_utc_date, _diag_usd_manila_date = "(no dateline field)", "(no dateline field)"
+                st.session_state.activity.append(
+                    "Forex calendarComponentStates USD event: "
+                    f"name={_diag_usd_ev.get('name', '(missing)')} "
+                    f"currency={_diag_usd_ev.get('currency', '(missing)')} "
+                    f"impactName={_diag_usd_ev.get('impactName', '(missing)')} "
+                    f"impactClass={_diag_usd_ev.get('impactClass', '(missing)')} "
+                    f"impactTitle={_diag_usd_ev.get('impactTitle', '(missing)')} "
+                    f"timeLabel={_diag_usd_ev.get('timeLabel', '(missing)')} "
+                    f"date={_diag_usd_ev.get('date', '(missing)')} "
+                    f"dateline={_diag_usd_dateline} "
+                    f"utc_date={_diag_usd_utc_date} manila_date={_diag_usd_manila_date}"
+                )
+        else:
+            st.session_state.activity.append(
+                "Forex calendarComponentStates USD event: none found in days[].events[] for any parsed block"
+            )
+
+        _diag_non_usd_events = [e for e in _diag_all_events if str(e.get("currency", "")).upper() != "USD"]
+        for _diag_non_usd_ev in _diag_non_usd_events[:10]:
+            st.session_state.activity.append(
+                "Forex calendarComponentStates non-USD sample: "
+                f"name={_diag_non_usd_ev.get('name', '(missing)')} "
+                f"currency={_diag_non_usd_ev.get('currency', '(missing)')} "
+                f"impactName={_diag_non_usd_ev.get('impactName', '(missing)')} "
+                f"timeLabel={_diag_non_usd_ev.get('timeLabel', '(missing)')} "
+                f"date={_diag_non_usd_ev.get('date', '(missing)')}"
+            )
+        # --- END calendarComponentStates STRUCTURAL DIAGNOSTIC ---
+
         # --- TEMPORARY FOREX FACTORY NAVIGATION/TITLE DIAGNOSTIC (additive only) ---
         # Extracts what the page itself displays as its current day/title/date
         # range, purely for comparison against calendar_url and today. This

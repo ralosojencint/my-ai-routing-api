@@ -2160,6 +2160,55 @@ def _forex_structured_records(payload, today):
         f"usd_high_impact_fragment_count={_diag_usd_high_impact_fragment_count} "
         f"today={today.isoformat()}"
     )
+    # --- SECOND, INDEPENDENT PASS: does currency extraction find ANYTHING? ---
+    # The loop above only counts/samples fragments where currency == 'USD' --
+    # it never records what a non-USD or empty currency extraction actually
+    # yields, so it cannot distinguish "the dataset genuinely has no USD
+    # events" from "field(fragment, ('currency',)) cannot recognize USD at
+    # all here". This pass re-scans the same _diag_fragments independently,
+    # counting any NON-EMPTY currency value regardless of what it is, and
+    # sampling a few rows in currency | dateline | UTC date | Manila date |
+    # impactName | title order. It does not gate on currency, impact, or
+    # date, and does not feed `records`/`seen` or any filtering decision.
+    _diag_any_currency_count = 0
+    _diag_currency_value_counts = {}
+    _diag_any_currency_samples = []
+    for _diag_fragment2 in _diag_fragments:
+        _diag_currency2 = field(_diag_fragment2, ('currency',)).upper()
+        if not _diag_currency2:
+            continue
+        _diag_any_currency_count += 1
+        _diag_currency_value_counts[_diag_currency2] = _diag_currency_value_counts.get(_diag_currency2, 0) + 1
+        if len(_diag_any_currency_samples) < 8:
+            _diag_impact_name2 = field(_diag_fragment2, ('impactName',))
+            _diag_dateline_raw2 = field(_diag_fragment2, ('dateline', 'timestamp', 'datetime'))
+            _diag_utc_date2 = ''
+            _diag_manila_date2 = ''
+            try:
+                _diag_number2 = float(_diag_dateline_raw2)
+                if _diag_number2 > 10_000_000_000: _diag_number2 /= 1000.0
+                _diag_dt_utc2 = datetime.fromtimestamp(_diag_number2, tz=timezone.utc)
+                _diag_utc_date2 = _diag_dt_utc2.date().isoformat()
+                _diag_manila_date2 = _diag_dt_utc2.astimezone(ZoneInfo('Asia/Manila')).date().isoformat()
+            except (TypeError, ValueError, OverflowError, OSError):
+                pass
+            _diag_title2 = field(_diag_fragment2, ('name', 'soloTitleFull', 'soloTitle', 'trimmedPrefixedName', 'prefixedName', 'title', 'eventName', 'eventTitle'))
+            _diag_any_currency_samples.append(
+                f"currency={_diag_currency2} | dateline={_diag_dateline_raw2 or '(empty)'} | "
+                f"utc_date={_diag_utc_date2 or '(unparsed)'} | manila_date={_diag_manila_date2 or '(unparsed)'} | "
+                f"impactName={_diag_impact_name2 or '(empty)'} | title={_diag_title2 or '(empty)'}"
+            )
+    _diag_empty_currency_count = _diag_balanced_objects_count - _diag_any_currency_count
+    _diag_currency_breakdown = ', '.join(f"{k}={v}" for k, v in sorted(_diag_currency_value_counts.items(), key=lambda kv: -kv[1])[:10]) or '(none)'
+    st.session_state.activity.append(
+        f"Forex currency-scan diagnostic: any_currency_count={_diag_any_currency_count} "
+        f"empty_currency_count={_diag_empty_currency_count} "
+        f"currency_breakdown=[{_diag_currency_breakdown}] "
+        f"today={today.isoformat()}"
+    )
+    for _diag_line2 in _diag_any_currency_samples:
+        st.session_state.activity.append("Forex currency-scan diagnostic sample: " + _diag_line2)
+    # --- END SECOND, INDEPENDENT PASS ---
     for _diag_line in _diag_samples:
         st.session_state.activity.append("Forex event diagnostic sample: " + _diag_line)
     # --- END TEMPORARY DIAGNOSTIC INSTRUMENTATION ---

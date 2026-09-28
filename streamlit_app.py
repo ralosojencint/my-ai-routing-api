@@ -1207,397 +1207,7 @@ async def forex_research(query):
         )
         with urlopen(request, timeout=12) as response:
             page_html = response.read().decode("utf-8", errors="ignore")
-            _diag_response_url = response.geturl()
-            _diag_response_status = getattr(response, "status", None)
-            if _diag_response_status is None:
-                _diag_response_status = response.getcode()
-
-        # --- TEMPORARY REQUEST/RESPONSE DATE-HANDLING DIAGNOSTIC (additive only) ---
-        # Reports exactly what URL was requested, what URL the server actually
-        # served (after any redirects), and the HTTP status -- does not alter
-        # calendar_url, the request, or anything downstream of it.
-        st.session_state.activity.append(
-            f"Forex request/response diagnostic: requested_url={calendar_url} "
-            f"final_url={_diag_response_url} "
-            f"http_status={_diag_response_status} "
-            f"today={today.isoformat()}"
-        )
-        # --- END REQUEST/RESPONSE DIAGNOSTIC ---
-
-        # --- TEMPORARY calendarComponentStates STRUCTURAL DIAGNOSTIC (additive only) ---
-        # Parses the raw page_html's `calendarComponentStates[n] = {...}`
-        # JavaScript assignment(s) directly and structurally: locates each
-        # block, then its `days` array, then each day's `events` array, then
-        # parses each individual event object with json.loads. Does NOT call
-        # balanced_objects() or field(), and does NOT feed structured_records,
-        # combined_text, page_text, or any object _forex_structured_records/
-        # _forex_event_candidates/forex_pipeline consume -- it only appends to
-        # st.session_state.activity. Purpose: determine whether the actual
-        # days[].events[] payload for the requested day contains USD events,
-        # independent of anything the existing balanced_objects()-based
-        # diagnostics found or missed.
-
-        def _diag_ccs_blocks(script_text):
-            # Returns list of (block_index_str, block_text) for every
-            # `calendarComponentStates[<n>] = {...}` assignment, using an
-            # independent, quote-aware brace-matcher scoped only to this
-            # single purpose (not balanced_objects()).
-            found = []
-            for m in re.finditer(r'calendarComponentStates\s*\[\s*\d+\s*\]\s*=\s*\{', script_text):
-                idx_m = re.search(r'\[\s*(\d+)\s*\]', m.group(0))
-                block_index = idx_m.group(1) if idx_m else "?"
-                brace_start = m.end() - 1
-                depth = 0
-                quote = None
-                escaped = False
-                end_pos = None
-                for pos in range(brace_start, len(script_text)):
-                    ch = script_text[pos]
-                    if quote:
-                        if escaped: escaped = False
-                        elif ch == '\\': escaped = True
-                        elif ch == quote: quote = None
-                        continue
-                    if ch in ('"', "'", '`'): quote = ch
-                    elif ch == '{': depth += 1
-                    elif ch == '}':
-                        depth -= 1
-                        if depth == 0:
-                            end_pos = pos
-                            break
-                if end_pos is not None:
-                    found.append((block_index, script_text[brace_start:end_pos + 1]))
-            return found
-
-        def _diag_balanced_span_end(text, open_pos, open_char, close_char):
-            depth = 0
-            quote = None
-            escaped = False
-            for pos in range(open_pos, len(text)):
-                ch = text[pos]
-                if quote:
-                    if escaped: escaped = False
-                    elif ch == '\\': escaped = True
-                    elif ch == quote: quote = None
-                    continue
-                if ch in ('"', "'", '`'): quote = ch
-                elif ch == open_char: depth += 1
-                elif ch == close_char:
-                    depth -= 1
-                    if depth == 0:
-                        return pos
-            return None
-
-        def _diag_objects_in_array(text, array_bracket_pos):
-            # Returns (start,end_inclusive) spans of every top-level {...}
-            # object directly inside the array opening at array_bracket_pos.
-            array_end = _diag_balanced_span_end(text, array_bracket_pos, '[', ']')
-            if array_end is None:
-                return []
-            inner = text[array_bracket_pos + 1:array_end]
-            offset = array_bracket_pos + 1
-            objects = []
-            depth = 0
-            quote = None
-            escaped = False
-            obj_start = None
-            for i, ch in enumerate(inner):
-                if quote:
-                    if escaped: escaped = False
-                    elif ch == '\\': escaped = True
-                    elif ch == quote: quote = None
-                    continue
-                if ch in ('"', "'", '`'): quote = ch
-                elif ch == '{':
-                    if depth == 0:
-                        obj_start = i
-                    depth += 1
-                elif ch == '}':
-                    depth -= 1
-                    if depth == 0 and obj_start is not None:
-                        objects.append((offset + obj_start, offset + i))
-                        obj_start = None
-            return objects
-
-        def _diag_dateline_to_dates(value):
-            try:
-                number = float(value)
-                if number > 10_000_000_000: number /= 1000.0
-                dt = datetime.fromtimestamp(number, tz=timezone.utc)
-                return dt.date().isoformat(), dt.astimezone(ZoneInfo('Asia/Manila')).date().isoformat()
-            except (TypeError, ValueError, OverflowError, OSError):
-                return "(unparsed)", "(unparsed)"
-
-        _diag_ccs_block_list = _diag_ccs_blocks(page_html)
-        st.session_state.activity.append(
-            f"Forex calendarComponentStates diagnostic: blocks_found={len(_diag_ccs_block_list)}"
-        )
-
-        _diag_all_days = []
-        _diag_all_events = []
-        for _diag_block_index, _diag_block_text in _diag_ccs_block_list:
-            _diag_days_key_m = re.search(r'["\']?days["\']?\s*:\s*\[', _diag_block_text)
-            if not _diag_days_key_m:
-                st.session_state.activity.append(
-                    f"Forex calendarComponentStates diagnostic: block={_diag_block_index} no 'days' key found"
-                )
-                continue
-            _diag_days_array_pos = _diag_block_text.index('[', _diag_days_key_m.start())
-            for _diag_ds, _diag_de in _diag_objects_in_array(_diag_block_text, _diag_days_array_pos):
-                _diag_day_text = _diag_block_text[_diag_ds:_diag_de + 1]
-                _diag_day_dateline_m = re.search(r'"dateline"\s*:\s*(-?\d+(?:\.\d+)?)', _diag_day_text)
-                _diag_day_date_m = re.search(r'"date"\s*:\s*"([^"]*)"', _diag_day_text)
-                _diag_day_dateline = _diag_day_dateline_m.group(1) if _diag_day_dateline_m else "(missing)"
-                _diag_day_date = _diag_day_date_m.group(1) if _diag_day_date_m else "(missing)"
-                _diag_events_key_m = re.search(r'["\']?events["\']?\s*:\s*\[', _diag_day_text)
-                _diag_day_events = []
-                if _diag_events_key_m:
-                    _diag_events_array_pos = _diag_day_text.index('[', _diag_events_key_m.start())
-                    for _diag_es, _diag_ee in _diag_objects_in_array(_diag_day_text, _diag_events_array_pos):
-                        _diag_event_text = _diag_day_text[_diag_es:_diag_ee + 1]
-                        try:
-                            _diag_parsed_event = json.loads(_diag_event_text)
-                            _diag_day_events.append(_diag_parsed_event)
-                            _diag_all_events.append(_diag_parsed_event)
-                        except json.JSONDecodeError:
-                            pass
-                _diag_all_days.append({
-                    "block_index": _diag_block_index,
-                    "date": _diag_day_date,
-                    "dateline": _diag_day_dateline,
-                    "event_count": len(_diag_day_events),
-                })
-
-        st.session_state.activity.append(
-            f"Forex calendarComponentStates diagnostic: days_found={len(_diag_all_days)} "
-            f"total_events={len(_diag_all_events)}"
-        )
-        for _diag_day_info in _diag_all_days:
-            st.session_state.activity.append(
-                f"Forex calendarComponentStates day: block={_diag_day_info['block_index']} "
-                f"date=\"{_diag_day_info['date']}\" dateline={_diag_day_info['dateline']} "
-                f"event_count={_diag_day_info['event_count']}"
-            )
-
-        _diag_ccs_currency_counts = {}
-        for _diag_ev in _diag_all_events:
-            _diag_ccs_currency = str(_diag_ev.get("currency", "(missing)")).upper()
-            _diag_ccs_currency_counts[_diag_ccs_currency] = _diag_ccs_currency_counts.get(_diag_ccs_currency, 0) + 1
-        _diag_ccs_currency_breakdown = ", ".join(
-            f"{k}={v}" for k, v in sorted(_diag_ccs_currency_counts.items(), key=lambda kv: -kv[1])
-        ) or "(none)"
-
-        _diag_ccs_usd_events = [e for e in _diag_all_events if str(e.get("currency", "")).upper() == "USD"]
-        _diag_ccs_usd_high_events = [
-            e for e in _diag_ccs_usd_events
-            if "high" in str(e.get("impactName", "")).lower() or "red" in str(e.get("impactClass", "")).lower()
-        ]
-
-        st.session_state.activity.append(
-            f"Forex calendarComponentStates currency diagnostic: "
-            f"currency_breakdown=[{_diag_ccs_currency_breakdown}] "
-            f"usd_event_count={len(_diag_ccs_usd_events)} "
-            f"usd_high_impact_event_count={len(_diag_ccs_usd_high_events)}"
-        )
-
-        if _diag_ccs_usd_events:
-            for _diag_usd_ev in _diag_ccs_usd_events:
-                _diag_usd_dateline = _diag_usd_ev.get("dateline")
-                if _diag_usd_dateline is not None:
-                    _diag_usd_utc_date, _diag_usd_manila_date = _diag_dateline_to_dates(_diag_usd_dateline)
-                else:
-                    _diag_usd_utc_date, _diag_usd_manila_date = "(no dateline field)", "(no dateline field)"
-                st.session_state.activity.append(
-                    "Forex calendarComponentStates USD event: "
-                    f"name={_diag_usd_ev.get('name', '(missing)')} "
-                    f"currency={_diag_usd_ev.get('currency', '(missing)')} "
-                    f"impactName={_diag_usd_ev.get('impactName', '(missing)')} "
-                    f"impactClass={_diag_usd_ev.get('impactClass', '(missing)')} "
-                    f"impactTitle={_diag_usd_ev.get('impactTitle', '(missing)')} "
-                    f"timeLabel={_diag_usd_ev.get('timeLabel', '(missing)')} "
-                    f"date={_diag_usd_ev.get('date', '(missing)')} "
-                    f"dateline={_diag_usd_dateline} "
-                    f"utc_date={_diag_usd_utc_date} manila_date={_diag_usd_manila_date}"
-                )
-        else:
-            st.session_state.activity.append(
-                "Forex calendarComponentStates USD event: none found in days[].events[] for any parsed block"
-            )
-
-        _diag_non_usd_events = [e for e in _diag_all_events if str(e.get("currency", "")).upper() != "USD"]
-        for _diag_non_usd_ev in _diag_non_usd_events[:10]:
-            st.session_state.activity.append(
-                "Forex calendarComponentStates non-USD sample: "
-                f"name={_diag_non_usd_ev.get('name', '(missing)')} "
-                f"currency={_diag_non_usd_ev.get('currency', '(missing)')} "
-                f"impactName={_diag_non_usd_ev.get('impactName', '(missing)')} "
-                f"timeLabel={_diag_non_usd_ev.get('timeLabel', '(missing)')} "
-                f"date={_diag_non_usd_ev.get('date', '(missing)')}"
-            )
-        # --- END calendarComponentStates STRUCTURAL DIAGNOSTIC ---
-
-        # --- TEMPORARY FOREX FACTORY NAVIGATION/TITLE DIAGNOSTIC (additive only) ---
-        # Extracts what the page itself displays as its current day/title/date
-        # range, purely for comparison against calendar_url and today. This
-        # extraction is NOT fed into structured_records, combined_text,
-        # page_text, or any object _forex_structured_records/
-        # _forex_event_candidates/forex_pipeline consume -- it only appends
-        # to st.session_state.activity.
-        _diag_title_match = re.search(r"<title[^>]*>(.*?)</title>", page_html, flags=re.I | re.S)
-        _diag_page_title = re.sub(r"\s+", " ", _diag_title_match.group(1)).strip() if _diag_title_match else "(not found)"
-
-        # A canonical/og:url meta tag, if present, often reflects the
-        # server's own notion of the current page URL after any internal
-        # day-normalization -- separate from response.geturl() which only
-        # reflects HTTP-level redirects.
-        _diag_canonical_match = re.search(
-            r'<link[^>]*rel=["\']canonical["\'][^>]*href=["\']([^"\']+)["\']',
-            page_html, flags=re.I,
-        )
-        if not _diag_canonical_match:
-            _diag_canonical_match = re.search(
-                r'<meta[^>]*property=["\']og:url["\'][^>]*content=["\']([^"\']+)["\']',
-                page_html, flags=re.I,
-            )
-        _diag_canonical_url = _diag_canonical_match.group(1) if _diag_canonical_match else "(not found)"
-
-        # A day=<mon><day>.<year> style link elsewhere in the markup (e.g. a
-        # "next/previous day" nav link, or a self-referential link the page
-        # renders for the day it considers current) -- reported as-is,
-        # de-duplicated, first few occurrences only.
-        _diag_day_links = re.findall(r'calendar\?day=([a-zA-Z]{3}\d{1,2}\.\d{4})', page_html)
-        _diag_day_links_unique = list(dict.fromkeys(_diag_day_links))[:5]
-
-        # A start/end date range, if the page renders one explicitly (some
-        # calendar UIs show a week/range header near the top).
-        _diag_range_match = re.search(
-            r'(?:data-date-range|date-range|calendar__range)[^>]*>([^<]{1,80})<',
-            page_html, flags=re.I,
-        )
-        _diag_date_range = re.sub(r"\s+", " ", _diag_range_match.group(1)).strip() if _diag_range_match else "(not found)"
-
-        st.session_state.activity.append(
-            f"Forex navigation diagnostic: page_title=\"{_diag_page_title}\" "
-            f"canonical_url={_diag_canonical_url} "
-            f"day_links_found={_diag_day_links_unique or '(none)'} "
-            f"date_range_text=\"{_diag_date_range}\""
-        )
-        # --- END NAVIGATION DIAGNOSTIC ---
-
-        # --- TEMPORARY RAW-HTML USD/CURRENCY REPRESENTATION DIAGNOSTIC (additive only) ---
-        # Operates directly on page_html via plain string/regex search. Does
-        # NOT call field() or balanced_objects() and does NOT feed
-        # structured_records, combined_text, page_text, or any object
-        # _forex_structured_records/_forex_event_candidates/forex_pipeline
-        # consume -- it only appends to st.session_state.activity. Purpose:
-        # determine where/how USD event data actually appears in the raw
-        # response before any parser change is considered.
-
-        def _diag_script_span_ranges(html_text):
-            # Byte ranges covered by every <script>...</script> region, used
-            # only to classify whether a later position falls inside one.
-            return [
-                (m.start(), m.end())
-                for m in re.finditer(r"<script\b[^>]*>.*?</script\s*>", html_text, flags=re.I | re.S)
-            ]
-
-        def _diag_in_script(pos, spans):
-            return any(s <= pos < e for s, e in spans)
-
-        def _diag_windows(html_text, needle, max_windows=10, half_width=500):
-            out = []
-            cursor = 0
-            while len(out) < max_windows:
-                idx = html_text.find(needle, cursor)
-                if idx == -1:
-                    break
-                w_start = max(0, idx - half_width)
-                w_end = min(len(html_text), idx + len(needle) + half_width)
-                out.append((idx, html_text[w_start:w_end]))
-                cursor = idx + len(needle)
-            return out
-
-        def _diag_classify(window_text, bare_value):
-            if re.search(r'"currency"\s*:\s*"' + re.escape(bare_value) + r'"', window_text):
-                return "JSON key:value (quoted key, quoted string value)"
-            if re.search(r'\bcurrency\s*:\s*"' + re.escape(bare_value) + r'"', window_text):
-                return "JS object literal (unquoted key, quoted string value)"
-            if re.search(re.escape(bare_value) + r'&quot;|&quot;' + re.escape(bare_value), window_text):
-                return "HTML-entity-encoded"
-            if re.search(r'\\"' + re.escape(bare_value) + r'\\"', window_text):
-                return "backslash-escaped JSON string"
-            if re.search(r'currencyNames|currencyList|currencyLabels|CURRENCY_', window_text, flags=re.I):
-                return "configuration/lookup table (e.g. currencyNames)"
-            if re.search(r'<[a-zA-Z][^>]*["\']' + re.escape(bare_value) + r'["\'][^>]*>', window_text):
-                return "inside an HTML tag/attribute"
-            return "unclassified (needs manual review)"
-
-        _diag_script_spans = _diag_script_span_ranges(page_html)
-
-        # Exact occurrence counts for the six requested literal targets.
-        _diag_target_counts = {
-            '"currency":"': page_html.count('"currency":"'),
-            '"currency":': page_html.count('"currency":'),
-            '"USD"': page_html.count('"USD"'),
-            '"impactName"': page_html.count('"impactName"'),
-            '"dateline"': page_html.count('"dateline"'),
-            '"timeLabel"': page_html.count('"timeLabel"'),
-        }
-        # Supplementary counts for representations a literal '"USD"'/'"currency"'
-        # search would miss entirely (found necessary during diagnostic
-        # construction -- an escaped or unquoted-key form does not contain the
-        # literal substring '"USD"' at all, so it would silently undercount
-        # without these).
-        _diag_usd_escaped_count = page_html.count('\\"USD\\"')
-        _diag_usd_html_entity_count = page_html.count('&quot;USD&quot;')
-        _diag_currency_unquoted_key_count = len(re.findall(r'(?<![A-Za-z0-9_"])currency\s*:', page_html))
-        _diag_supplemental_counts = {
-            'USD backslash-escaped': _diag_usd_escaped_count,
-            'USD HTML-entity': _diag_usd_html_entity_count,
-            'currency unquoted-key': _diag_currency_unquoted_key_count,
-        }
-
-        st.session_state.activity.append(
-            "Forex raw-HTML occurrence diagnostic: "
-            + " ".join(f"{k}={v}" for k, v in _diag_target_counts.items())
-            + " | supplemental: "
-            + " ".join(f"{k}={v}" for k, v in _diag_supplemental_counts.items())
-        )
-
-        # Up to 10 bounded ±500-char context windows for "USD", classified.
-        _diag_usd_windows = _diag_windows(page_html, '"USD"', max_windows=10, half_width=500)
-        if _diag_usd_windows:
-            for _diag_pos, _diag_ctx in _diag_usd_windows:
-                _diag_shape = _diag_classify(_diag_ctx, "USD")
-                _diag_in_scr = _diag_in_script(_diag_pos, _diag_script_spans)
-                st.session_state.activity.append(
-                    f'Forex "USD" occurrence: pos={_diag_pos} in_script={_diag_in_scr} '
-                    f"shape={_diag_shape} context={_diag_ctx}"
-                )
-        else:
-            st.session_state.activity.append(
-                'Forex "USD" occurrence: literal \'"USD"\' not found anywhere in page_html '
-                f"(supplemental backslash-escaped count={_diag_usd_escaped_count}, "
-                f"HTML-entity count={_diag_usd_html_entity_count})"
-            )
-
-        # Up to 10 bounded ±500-char context windows for "currency" (matches
-        # either '"currency":' or a bare '"currency"' occurrence).
-        _diag_currency_windows = _diag_windows(page_html, '"currency"', max_windows=10, half_width=500)
-        if _diag_currency_windows:
-            for _diag_pos, _diag_ctx in _diag_currency_windows:
-                _diag_in_scr = _diag_in_script(_diag_pos, _diag_script_spans)
-                st.session_state.activity.append(
-                    f'Forex "currency" occurrence: pos={_diag_pos} in_script={_diag_in_scr} '
-                    f"context={_diag_ctx}"
-                )
-        else:
-            st.session_state.activity.append(
-                'Forex "currency" occurrence: literal \'"currency"\' not found anywhere in page_html '
-                f"(unquoted-key count={_diag_currency_unquoted_key_count})"
-            )
-        # --- END RAW-HTML USD/CURRENCY REPRESENTATION DIAGNOSTIC ---
-
+        
         # TEMPORARY FOREX FACTORY DIAGNOSTIC — DO NOT MODIFY EXTRACTION
         # Capture response structure only. Remove after investigation.
         script_matches = re.findall(
@@ -2454,31 +2064,92 @@ async def research_pipeline(query):
 
 
 def _forex_structured_records(payload, today):
-    """Extract USD/high-impact Forex Factory rows without cross-event mixing."""
+    """Extract USD/high-impact Forex Factory rows without cross-event mixing.
+
+    Parses the real Forex Factory calendar structure directly:
+        window.calendarComponentStates[n] = {
+            days: [
+                { date: ..., dateline: ..., events: [ {...event...}, ... ] },
+                ...
+            ]
+        }
+    Each event object is located structurally (via a quote-aware brace
+    matcher scoped to this one purpose) and parsed individually with
+    json.loads, so every field used below comes from that one event's own
+    parsed dict -- never from a nearby field in a different event, and
+    never from configuration/lookup data such as currencyNames or
+    currencies (those are plain lists/dicts assigned elsewhere in the
+    script, not `days[].events[]` entries, so they are never visited by
+    this walk). Validated against a fixture reconstructed from values
+    reported from the live page (see tests/test_forex_structured_records.py),
+    not against a byte-for-byte captured response.
+    """
     if not payload:
         return []
-    text = payload.replace(r'\\"', '"').replace(r"\\'", "'")
-    def field(fragment, names):
-        for name in names:
-            pattern = rf"(?<![A-Za-z0-9_])(?:[\"']{re.escape(name)}[\"']|{re.escape(name)})\s*:\s*(?:[\"']([^\"']*)[\"']|(-?\d+(?:\.\d+)?))"
-            match = re.search(pattern, fragment, flags=re.I)
-            if match:
-                return (match.group(1) if match.group(1) is not None else match.group(2) or '').strip()
-        return ''
-    def balanced_objects(source):
-        # Record every closed {...} span at any nesting depth (a stack of
-        # start positions), not only spans that return to depth 0. Real
-        # Forex Factory payloads nest each event inside wrapper objects
-        # (day/events buckets), so the previous depth==0-only check merged
-        # every event in the page into a single fragment and mixed fields
-        # across events (confirmed: it read an outer day-bucket's own
-        # dateline instead of the actual event's dateline). Capturing every
-        # closed brace span isolates each innermost event object on its
-        # own; outer wrapper objects are also captured, which is harmless
-        # since they don't carry their own currency field and are filtered
-        # out below the same as any other non-matching fragment.
-        result, starts, quote, escaped = [], [], None, False
-        for pos, ch in enumerate(source):
+
+    def calendar_component_state_blocks(script_text):
+        # Returns the text of every `calendarComponentStates[<n>] = {...}`
+        # assignment's object literal, using an independent, quote-aware
+        # brace-matcher scoped only to this purpose (not the balanced_objects()
+        # used elsewhere for the raw-text fallback path).
+        found = []
+        for m in re.finditer(r'calendarComponentStates\s*\[\s*\d+\s*\]\s*=\s*\{', script_text):
+            brace_start = m.end() - 1
+            depth = 0
+            quote = None
+            escaped = False
+            end_pos = None
+            for pos in range(brace_start, len(script_text)):
+                ch = script_text[pos]
+                if quote:
+                    if escaped: escaped = False
+                    elif ch == '\\': escaped = True
+                    elif ch == quote: quote = None
+                    continue
+                if ch in ('"', "'", '`'): quote = ch
+                elif ch == '{': depth += 1
+                elif ch == '}':
+                    depth -= 1
+                    if depth == 0:
+                        end_pos = pos
+                        break
+            if end_pos is not None:
+                found.append(script_text[brace_start:end_pos + 1])
+        return found
+
+    def balanced_array_end(text, open_bracket_pos):
+        depth = 0
+        quote = None
+        escaped = False
+        for pos in range(open_bracket_pos, len(text)):
+            ch = text[pos]
+            if quote:
+                if escaped: escaped = False
+                elif ch == '\\': escaped = True
+                elif ch == quote: quote = None
+                continue
+            if ch in ('"', "'", '`'): quote = ch
+            elif ch == '[': depth += 1
+            elif ch == ']':
+                depth -= 1
+                if depth == 0:
+                    return pos
+        return None
+
+    def objects_in_array(text, array_bracket_pos):
+        # Returns (start, end_inclusive) spans of every top-level {...}
+        # object directly inside the array opening at array_bracket_pos.
+        array_end = balanced_array_end(text, array_bracket_pos)
+        if array_end is None:
+            return []
+        inner = text[array_bracket_pos + 1:array_end]
+        offset = array_bracket_pos + 1
+        objects = []
+        depth = 0
+        quote = None
+        escaped = False
+        obj_start = None
+        for i, ch in enumerate(inner):
             if quote:
                 if escaped: escaped = False
                 elif ch == '\\': escaped = True
@@ -2486,13 +2157,17 @@ def _forex_structured_records(payload, today):
                 continue
             if ch in ('"', "'", '`'): quote = ch
             elif ch == '{':
-                starts.append(pos)
+                if depth == 0:
+                    obj_start = i
+                depth += 1
             elif ch == '}':
-                if starts:
-                    start = starts.pop()
-                    result.append(source[start:pos + 1])
-        return result
-    def timestamp_dates(value):
+                depth -= 1
+                if depth == 0 and obj_start is not None:
+                    objects.append((offset + obj_start, offset + i))
+                    obj_start = None
+        return objects
+
+    def dateline_dates(value):
         try:
             number = float(value)
             if number > 10_000_000_000: number /= 1000.0
@@ -2500,121 +2175,65 @@ def _forex_structured_records(payload, today):
             return {dt.date(), dt.astimezone(ZoneInfo('Asia/Manila')).date()}
         except (TypeError, ValueError, OverflowError, OSError):
             return set()
+
     tokens = {today.strftime(x).lower() for x in ('%Y-%m-%d', '%b %-d, %Y', '%B %-d, %Y', '%b %-d', '%B %-d')}
+
+    # Walk calendarComponentStates -> days[] -> events[], parsing each event
+    # object individually with json.loads. Duplicate calendarComponentStates
+    # blocks (the live page has been observed to embed the same day/events
+    # data twice) naturally produce duplicate parsed event dicts here; that
+    # duplication is resolved the same way as any other repeated label,
+    # below, via the `seen` set -- not by trying to detect duplicate blocks
+    # up front, so a second block with genuinely different events is never
+    # discarded outright.
+    all_events = []
+    for block_text in calendar_component_state_blocks(payload):
+        days_key_match = re.search(r'["\']?days["\']?\s*:\s*\[', block_text)
+        if not days_key_match:
+            continue
+        days_array_pos = block_text.index('[', days_key_match.start())
+        for day_start, day_end in objects_in_array(block_text, days_array_pos):
+            day_text = block_text[day_start:day_end + 1]
+            events_key_match = re.search(r'["\']?events["\']?\s*:\s*\[', day_text)
+            if not events_key_match:
+                continue
+            events_array_pos = day_text.index('[', events_key_match.start())
+            for event_start, event_end in objects_in_array(day_text, events_array_pos):
+                event_text = day_text[event_start:event_end + 1]
+                try:
+                    parsed_event = json.loads(event_text)
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(parsed_event, dict):
+                    all_events.append(parsed_event)
+
     records, seen = [], set()
-    # --- TEMPORARY DIAGNOSTIC INSTRUMENTATION (read-only; no filtering behavior changed) ---
-    # Distinguishes: (1) balanced_objects() finding no fragments at all, (2) fragments
-    # found but currency extraction failing/non-USD, (3) USD fragments found but their
-    # datelines resolving to a day other than `today`, (4) Sep-27 USD/high fragments
-    # found but rejected by a later gate. Every counter below mirrors an existing
-    # condition without altering it; no continue/branch order changes below this block.
-    # Remove this block once the failing stage is identified.
-    _diag_fragments = balanced_objects(text)
-    _diag_balanced_objects_count = len(_diag_fragments)
-    _diag_usd_fragment_count = 0
-    _diag_usd_high_impact_fragment_count = 0
-    _diag_samples = []
-    for _diag_fragment in _diag_fragments:
-        _diag_currency = field(_diag_fragment, ('currency',)).upper()
-        if _diag_currency != 'USD':
+    for event in all_events:
+        currency = str(event.get('currency', '')).strip().upper()
+        if currency != 'USD':
             continue
-        _diag_usd_fragment_count += 1
-        _diag_impact_name = field(_diag_fragment, ('impactName',))
-        _diag_impact_class = field(_diag_fragment, ('impactClass',))
-        _diag_impact_combo = ' '.join(field(_diag_fragment, names).lower() for names in (('impactName',), ('impactTitle',), ('impact',), ('importance',), ('impactClass',)))
-        _diag_is_high = 'high' in _diag_impact_combo or 'red' in _diag_impact_combo
-        if _diag_is_high:
-            _diag_usd_high_impact_fragment_count += 1
-        _diag_dateline_raw = field(_diag_fragment, ('dateline', 'timestamp', 'datetime'))
-        _diag_utc_date = ''
-        _diag_manila_date = ''
-        try:
-            _diag_number = float(_diag_dateline_raw)
-            if _diag_number > 10_000_000_000: _diag_number /= 1000.0
-            _diag_dt_utc = datetime.fromtimestamp(_diag_number, tz=timezone.utc)
-            _diag_utc_date = _diag_dt_utc.date().isoformat()
-            _diag_manila_date = _diag_dt_utc.astimezone(ZoneInfo('Asia/Manila')).date().isoformat()
-        except (TypeError, ValueError, OverflowError, OSError):
-            pass
-        _diag_title = field(_diag_fragment, ('name', 'soloTitleFull', 'soloTitle', 'trimmedPrefixedName', 'prefixedName', 'title', 'eventName', 'eventTitle'))
-        if len(_diag_samples) < 8:
-            _diag_samples.append(
-                f"currency={_diag_currency} | impactName={_diag_impact_name or '(empty)'} | "
-                f"impactClass={_diag_impact_class or '(empty)'} | dateline={_diag_dateline_raw or '(empty)'} | "
-                f"utc_date={_diag_utc_date or '(unparsed)'} | manila_date={_diag_manila_date or '(unparsed)'} | "
-                f"title={_diag_title or '(empty)'}"
-            )
-    st.session_state.activity.append(
-        f"Forex event diagnostic: balanced_objects_count={_diag_balanced_objects_count} "
-        f"usd_fragment_count={_diag_usd_fragment_count} "
-        f"usd_high_impact_fragment_count={_diag_usd_high_impact_fragment_count} "
-        f"today={today.isoformat()}"
-    )
-    # --- SECOND, INDEPENDENT PASS: does currency extraction find ANYTHING? ---
-    # The loop above only counts/samples fragments where currency == 'USD' --
-    # it never records what a non-USD or empty currency extraction actually
-    # yields, so it cannot distinguish "the dataset genuinely has no USD
-    # events" from "field(fragment, ('currency',)) cannot recognize USD at
-    # all here". This pass re-scans the same _diag_fragments independently,
-    # counting any NON-EMPTY currency value regardless of what it is, and
-    # sampling a few rows in currency | dateline | UTC date | Manila date |
-    # impactName | title order. It does not gate on currency, impact, or
-    # date, and does not feed `records`/`seen` or any filtering decision.
-    _diag_any_currency_count = 0
-    _diag_currency_value_counts = {}
-    _diag_any_currency_samples = []
-    for _diag_fragment2 in _diag_fragments:
-        _diag_currency2 = field(_diag_fragment2, ('currency',)).upper()
-        if not _diag_currency2:
+        impact_combo = ' '.join(
+            str(event.get(key, '')).lower()
+            for key in ('impactName', 'impactTitle', 'impact', 'importance', 'impactClass')
+        )
+        if not ('high' in impact_combo or 'red' in impact_combo):
             continue
-        _diag_any_currency_count += 1
-        _diag_currency_value_counts[_diag_currency2] = _diag_currency_value_counts.get(_diag_currency2, 0) + 1
-        if len(_diag_any_currency_samples) < 8:
-            _diag_impact_name2 = field(_diag_fragment2, ('impactName',))
-            _diag_dateline_raw2 = field(_diag_fragment2, ('dateline', 'timestamp', 'datetime'))
-            _diag_utc_date2 = ''
-            _diag_manila_date2 = ''
-            try:
-                _diag_number2 = float(_diag_dateline_raw2)
-                if _diag_number2 > 10_000_000_000: _diag_number2 /= 1000.0
-                _diag_dt_utc2 = datetime.fromtimestamp(_diag_number2, tz=timezone.utc)
-                _diag_utc_date2 = _diag_dt_utc2.date().isoformat()
-                _diag_manila_date2 = _diag_dt_utc2.astimezone(ZoneInfo('Asia/Manila')).date().isoformat()
-            except (TypeError, ValueError, OverflowError, OSError):
-                pass
-            _diag_title2 = field(_diag_fragment2, ('name', 'soloTitleFull', 'soloTitle', 'trimmedPrefixedName', 'prefixedName', 'title', 'eventName', 'eventTitle'))
-            _diag_any_currency_samples.append(
-                f"currency={_diag_currency2} | dateline={_diag_dateline_raw2 or '(empty)'} | "
-                f"utc_date={_diag_utc_date2 or '(unparsed)'} | manila_date={_diag_manila_date2 or '(unparsed)'} | "
-                f"impactName={_diag_impact_name2 or '(empty)'} | title={_diag_title2 or '(empty)'}"
-            )
-    _diag_empty_currency_count = _diag_balanced_objects_count - _diag_any_currency_count
-    _diag_currency_breakdown = ', '.join(f"{k}={v}" for k, v in sorted(_diag_currency_value_counts.items(), key=lambda kv: -kv[1])[:10]) or '(none)'
-    st.session_state.activity.append(
-        f"Forex currency-scan diagnostic: any_currency_count={_diag_any_currency_count} "
-        f"empty_currency_count={_diag_empty_currency_count} "
-        f"currency_breakdown=[{_diag_currency_breakdown}] "
-        f"today={today.isoformat()}"
-    )
-    for _diag_line2 in _diag_any_currency_samples:
-        st.session_state.activity.append("Forex currency-scan diagnostic sample: " + _diag_line2)
-    # --- END SECOND, INDEPENDENT PASS ---
-    for _diag_line in _diag_samples:
-        st.session_state.activity.append("Forex event diagnostic sample: " + _diag_line)
-    # --- END TEMPORARY DIAGNOSTIC INSTRUMENTATION ---
-    for fragment in balanced_objects(text):
-        if field(fragment, ('currency',)).upper() != 'USD': continue
-        impact = ' '.join(field(fragment, names).lower() for names in (('impactName',), ('impactTitle',), ('impact',), ('importance',), ('impactClass',)))
-        if not ('high' in impact or 'red' in impact): continue
-        explicit_date = field(fragment, ('date', 'eventDate', 'day'))
-        dateline = field(fragment, ('dateline', 'timestamp', 'datetime'))
-        if not any(token in explicit_date.lower() for token in tokens) and today not in timestamp_dates(dateline): continue
-        title = field(fragment, ('name', 'soloTitleFull', 'soloTitle', 'trimmedPrefixedName', 'prefixedName', 'title', 'eventName', 'eventTitle'))
-        if not title: continue
-        time_label = field(fragment, ('timeLabel', 'time', 'eventTime'))
+        explicit_date = str(event.get('date', '') or '')
+        dateline = event.get('dateline')
+        date_matches = any(token in explicit_date.lower() for token in tokens) or (
+            dateline is not None and today in dateline_dates(dateline)
+        )
+        if not date_matches:
+            continue
+        title = str(event.get('name', '') or event.get('title', '') or '').strip()
+        if not title:
+            continue
+        time_label = str(event.get('timeLabel', '') or '').strip()
         label = f'{time_label} | USD | High | {title}' if time_label else f'USD | High | {title}'
         label = re.sub(r'\s+', ' ', label).strip()
-        if label not in seen: seen.add(label); records.append(label)
+        if label not in seen:
+            seen.add(label)
+            records.append(label)
     return records[:20]
 
 def _forex_event_candidates(source, today):

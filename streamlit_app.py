@@ -2249,16 +2249,24 @@ def _forex_structured_records(payload, today):
     )
 
     records, seen = [], set()
+    # --- TEMPORARY GATE COUNTERS (additive only; no gate condition or control flow changed) ---
+    _diag_g_usd = _diag_g_impact = _diag_g_date = _diag_g_title = 0
+    _diag_stage = {}  # id(event) -> gate at which that event was rejected ('none' = passed all)
     for event in all_events:
+        _diag_stage[id(event)] = 'currency'
         currency = str(event.get('currency', '')).strip().upper()
         if currency != 'USD':
             continue
+        _diag_g_usd += 1
+        _diag_stage[id(event)] = 'impact'
         impact_combo = ' '.join(
             str(event.get(key, '')).lower()
             for key in ('impactName', 'impactTitle', 'impact', 'importance', 'impactClass')
         )
         if not ('high' in impact_combo or 'red' in impact_combo):
             continue
+        _diag_g_impact += 1
+        _diag_stage[id(event)] = 'date'
         explicit_date = str(event.get('date', '') or '')
         dateline = event.get('dateline')
         date_matches = any(token in explicit_date.lower() for token in tokens) or (
@@ -2266,9 +2274,13 @@ def _forex_structured_records(payload, today):
         )
         if not date_matches:
             continue
+        _diag_g_date += 1
+        _diag_stage[id(event)] = 'title'
         title = str(event.get('name', '') or event.get('title', '') or '').strip()
         if not title:
             continue
+        _diag_g_title += 1
+        _diag_stage[id(event)] = 'none'
         time_label = str(event.get('timeLabel', '') or '').strip()
         display_date = explicit_date.strip() or dateline_display_date(dateline)
         label = f'{time_label} | USD | High | {title}' if time_label else f'USD | High | {title}'
@@ -2278,6 +2290,38 @@ def _forex_structured_records(payload, today):
         if label not in seen:
             seen.add(label)
             records.append(label)
+    try:
+        _diag_currency_counts = {}
+        for _diag_e in all_events:
+            _diag_c = str(_diag_e.get('currency', '<missing>')).strip().upper()
+            _diag_currency_counts[_diag_c] = _diag_currency_counts.get(_diag_c, 0) + 1
+        _diag_jolts = [
+            e for e in all_events
+            if 'jolts' in str(e.get('name', '') or e.get('title', '')).lower()
+        ]
+        st.session_state.activity.append(
+            "Forex parser gate counts: "
+            f"total_parsed={len(all_events)} after_currency_usd={_diag_g_usd} "
+            f"after_high_impact={_diag_g_impact} after_date={_diag_g_date} "
+            f"after_title={_diag_g_title} final_records={len(records)} "
+            f"today={today.isoformat()} jolts_named_events={len(_diag_jolts)} "
+            f"currency_breakdown={_diag_currency_counts}"
+        )
+        if _diag_jolts:
+            _diag_j = _diag_jolts[0]
+            st.session_state.activity.append(
+                "Forex parser first JOLTS event: "
+                f"rejected_at={_diag_stage.get(id(_diag_j))} "
+                + " ".join(
+                    f"{k}={_diag_j.get(k, '<missing>')!r}"
+                    for k in ('name', 'title', 'currency', 'impactName', 'impactClass',
+                              'impactTitle', 'impact', 'importance', 'timeLabel',
+                              'dateline', 'date')
+                )
+            )
+    except Exception as _diag_exc:
+        st.session_state.activity.append(f"Forex parser gate diagnostic failed: {_diag_exc!r}")
+    # --- END TEMPORARY GATE COUNTERS ---
     return records[:20]
 
 def _forex_event_candidates(source, today):

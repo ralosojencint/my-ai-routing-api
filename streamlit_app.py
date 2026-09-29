@@ -2176,6 +2176,18 @@ def _forex_structured_records(payload, today):
         except (TypeError, ValueError, OverflowError, OSError):
             return set()
 
+    def dateline_display_date(value):
+        # Human-readable date derived from a dateline, used only as a
+        # fallback when the event's own `date` field is empty -- the actual
+        # event date must always be visible in the record, never guessed.
+        try:
+            number = float(value)
+            if number > 10_000_000_000: number /= 1000.0
+            dt = datetime.fromtimestamp(number, tz=timezone.utc).astimezone(ZoneInfo('Asia/Manila'))
+            return dt.strftime('%b %-d, %Y')
+        except (TypeError, ValueError, OverflowError, OSError):
+            return ''
+
     tokens = {today.strftime(x).lower() for x in ('%Y-%m-%d', '%b %-d, %Y', '%B %-d, %Y', '%b %-d', '%B %-d')}
 
     # Walk calendarComponentStates -> days[] -> events[], parsing each event
@@ -2187,25 +2199,54 @@ def _forex_structured_records(payload, today):
     # up front, so a second block with genuinely different events is never
     # discarded outright.
     all_events = []
-    for block_text in calendar_component_state_blocks(payload):
+    _diag_json_failures = 0
+    _diag_json_successes = 0
+    for _diag_block_index, block_text in enumerate(calendar_component_state_blocks(payload)):
         days_key_match = re.search(r'["\']?days["\']?\s*:\s*\[', block_text)
         if not days_key_match:
             continue
         days_array_pos = block_text.index('[', days_key_match.start())
-        for day_start, day_end in objects_in_array(block_text, days_array_pos):
+        for _diag_day_index, (day_start, day_end) in enumerate(objects_in_array(block_text, days_array_pos)):
             day_text = block_text[day_start:day_end + 1]
             events_key_match = re.search(r'["\']?events["\']?\s*:\s*\[', day_text)
             if not events_key_match:
                 continue
             events_array_pos = day_text.index('[', events_key_match.start())
-            for event_start, event_end in objects_in_array(day_text, events_array_pos):
+            for _diag_event_index, (event_start, event_end) in enumerate(objects_in_array(day_text, events_array_pos)):
                 event_text = day_text[event_start:event_end + 1]
                 try:
                     parsed_event = json.loads(event_text)
-                except json.JSONDecodeError:
+                except json.JSONDecodeError as _diag_exc:
+                    # --- TEMPORARY, MINIMAL DIAGNOSTIC (this except clause only) ---
+                    # Reports exactly why json.loads() rejected this one event
+                    # object: the decoder's own error message/position, a
+                    # bounded window of the actual text around that position,
+                    # and the object's own start/end. No other logic in this
+                    # function is touched by this block.
+                    _diag_json_failures += 1
+                    _diag_pos = _diag_exc.pos
+                    _diag_ctx_start = max(0, _diag_pos - 200)
+                    _diag_ctx_end = min(len(event_text), _diag_pos + 200)
+                    st.session_state.activity.append(
+                        "Forex parser JSON failure: "
+                        f"block_index={_diag_block_index} day_index={_diag_day_index} "
+                        f"event_index={_diag_event_index} "
+                        f"error={_diag_exc.msg} "
+                        f"position={_diag_pos} "
+                        f"context={event_text[_diag_ctx_start:_diag_ctx_end]!r} "
+                        f"object_start={event_text[:80]!r} "
+                        f"object_end={event_text[-80:]!r}"
+                    )
+                    # --- END TEMPORARY DIAGNOSTIC ---
                     continue
+                _diag_json_successes += 1
                 if isinstance(parsed_event, dict):
                     all_events.append(parsed_event)
+
+    st.session_state.activity.append(
+        f"Forex parser JSON summary: json_parse_failures={_diag_json_failures} "
+        f"successfully_parsed_events={_diag_json_successes}"
+    )
 
     records, seen = [], set()
     for event in all_events:
@@ -2229,7 +2270,10 @@ def _forex_structured_records(payload, today):
         if not title:
             continue
         time_label = str(event.get('timeLabel', '') or '').strip()
+        display_date = explicit_date.strip() or dateline_display_date(dateline)
         label = f'{time_label} | USD | High | {title}' if time_label else f'USD | High | {title}'
+        if display_date:
+            label = f'{label} | {display_date}'
         label = re.sub(r'\s+', ' ', label).strip()
         if label not in seen:
             seen.add(label)
